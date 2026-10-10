@@ -6,7 +6,7 @@ import { ComponentLoader } from 'adminjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const NAMES = [
   'ModeField', 'SetPasswordForm', 'ChangeRoleForm', 'GroupMembers',
-  'ChangeStatusForm', 'AssignForm', 'TicketHistory', 'CustomerTickets', 'Dashboard',
+  'ChangeStatusForm', 'AssignForm', 'TicketHistory', 'CustomerTickets', 'Dashboard', 'CommentsInline',
 ] as const;
 
 // Components import each other with ".js" specifiers (NodeNext). Only compiled JavaScript satisfies that, so
@@ -29,4 +29,5 @@ export const Components = {
   TicketHistory: componentLoader.add('TicketHistory', path.join(dir, 'components/TicketHistory')),
   CustomerTickets: componentLoader.add('CustomerTickets', path.join(dir, 'components/CustomerTickets')),
   Dashboard: componentLoader.add('Dashboard', path.join(dir, 'components/Dashboard')),
+  CommentsInline: componentLoader.add('CommentsInline', path.join(dir, 'components/CommentsInline')),
 };

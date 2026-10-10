@@ -4,6 +4,8 @@ import type { PrismaClient } from '@prisma/client';
 import { loadScope } from '../../domain/db.js';
 import { ValidationError } from '../../domain/errors.js';
 import { formatAge, ticketAgeMs } from '../../domain/tickets/age.js';
+import type { CommentQueries } from '../../domain/comments/comment-queries.js';
+import type { CommentService } from '../../domain/comments/comment-service.js';
 import type { TicketQueries } from '../../domain/tickets/ticket-queries.js';
 import type { TicketService } from '../../domain/tickets/ticket-service.js';
 import { ticketScopeWhere } from '../../policies/ticket-policy.js';
@@ -11,7 +13,7 @@ import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
 import { NO_ACTIONS, onlyIn } from './helpers.js';
-import { dataAction, formAction, pick, query, recordId } from './record-actions.js';
+import { dataAction, formAction, mutationAction, pick, query, recordId } from './record-actions.js';
 
 /** Form fields that the ordinary edit form must never change; changing them is rejected, not ignored. */
 const PROTECTED_FIELDS: Record<string, string> = {
@@ -27,7 +29,13 @@ const PROTECTED_FIELDS: Record<string, string> = {
 
 const blank = (v: unknown): string | null => (v === undefined || v === null || v === '' ? null : String(v));
 
-export function ticketResource(prisma: PrismaClient, tickets: TicketService, queries: TicketQueries): ResourceWithOptions {
+export function ticketResource(
+  prisma: PrismaClient,
+  tickets: TicketService,
+  queries: TicketQueries,
+  comments: CommentService,
+  commentQueries: CommentQueries,
+): ResourceWithOptions {
   const resource = new GuardedResource(
     { model: getModelByName('Ticket'), client: prisma },
     {
@@ -67,7 +75,7 @@ export function ticketResource(prisma: PrismaClient, tickets: TicketService, que
       filterProperties: ['number', 'subject', 'status', 'group', 'assignedAgent', 'priority', 'customer', 'createdAt', 'updatedAt'],
       showProperties: [
         'number', 'subject', 'description', 'priority', 'status', 'customer', 'group', 'assignedAgent', 'age',
-        'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'history',
+        'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'comments', 'history',
       ],
       properties: labelled('Ticket', {
         id: { isVisible: false },
@@ -94,6 +102,9 @@ export function ticketResource(prisma: PrismaClient, tickets: TicketService, que
         // Virtual: derived on read, never stored.
         age: { type: 'string', isVisible: onlyIn('show') },
         history: { type: 'mixed', isVisible: onlyIn('show'), components: { show: Components.TicketHistory } },
+        // Virtual: comments live inside the ticket page. "edit" covers the new form too, where the component
+        // explains that comments become available once the ticket exists.
+        comments: { type: 'mixed', position: 100, isVisible: onlyIn('show', 'edit'), components: { show: Components.CommentsInline, edit: Components.CommentsInline } },
       }),
       actions: {
         ...NO_ACTIONS,
@@ -115,6 +126,12 @@ export function ticketResource(prisma: PrismaClient, tickets: TicketService, que
           icon: 'UserPlus',
         },
         formState: dataAction((context, request) => queries.formState(actorFromContext(context), recordId(request), query(request, 'groupId'))),
+        // The ticket id is the record being viewed and the author is the session user; neither comes from the payload.
+        listComments: dataAction((context, request) => commentQueries.list(actorFromContext(context), recordId(request), Number(query(request, 'page') ?? 1))),
+        addComment: mutationAction((context, request, p) => comments.add(actorFromContext(context), recordId(request), pick(p, ['body']))),
+        editComment: mutationAction((context, request, p) =>
+          comments.edit(actorFromContext(context), String(p.commentId), Number(p.version), pick(p, ['body']), recordId(request)),
+        ),
         history: dataAction((context, request) => queries.history(actorFromContext(context), recordId(request), Number(query(request, 'page') ?? 1))),
       },
     },

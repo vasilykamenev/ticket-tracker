@@ -32,6 +32,7 @@ export const FIELD_CATALOG: Catalog = {
     createdBy: { label: 'Created by' },
     age: { label: 'Age', help: 'Time from creation until the ticket was resolved, closed or marked unresolved (or until now).' },
     history: { label: 'History' },
+    comments: { label: 'Comments', help: 'Internal notes of the support team (1-5000 characters, plain text). Closed and unresolved tickets take no comments until reopened.' },
   },
   Customer: {
     name: { label: 'Name', help: '1-200 characters.' },

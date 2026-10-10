@@ -20,6 +20,8 @@ import { customerResource } from './admin/resources/customer.js';
 import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
+import { CommentQueries } from './domain/comments/comment-queries.js';
+import { CommentService } from './domain/comments/comment-service.js';
 import { GroupQueries } from './domain/groups/group-queries.js';
 import { GroupService } from './domain/groups/group-service.js';
 import { StatusService } from './domain/statuses/status-service.js';
@@ -50,6 +52,8 @@ function buildAdmin(prisma: PrismaClient): AdminJS {
   const agents = new AgentService(prisma);
   const statuses = new StatusService(prisma);
   const users = new UserService(prisma);
+  const comments = new CommentService(prisma);
+  const commentQueries = new CommentQueries(prisma);
   return new AdminJS({
     rootPath: '/admin',
     logoutPath: '/auth/logout',
@@ -68,7 +72,7 @@ function buildAdmin(prisma: PrismaClient): AdminJS {
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).
     resources: [
-      ticketResource(prisma, tickets, queries),
+      ticketResource(prisma, tickets, queries, comments, commentQueries),
       customerResource(prisma, customers, queries),
       groupResource(prisma, groups, groupQueries),
       agentResource(prisma, agents),
