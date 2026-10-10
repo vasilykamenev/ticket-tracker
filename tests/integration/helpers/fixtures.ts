@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
+import { hashPassword } from '../../../src/auth/password.js';
 import { ensureSystemStatuses } from '../../../src/domain/tickets/status-seed.js';
 import type { Actor } from '../../../src/policies/ticket-policy.js';
 
+export const TEST_PASSWORD = 'Correct-Horse-9!';
+
 /** Creates uniquely named rows and removes exactly what it created. */
 export class Fixtures {
+  private passwordHash?: Promise<string>;
   private readonly run = randomUUID().slice(0, 8);
   private n = 0;
   private readonly userIds: string[] = [];
@@ -12,6 +16,12 @@ export class Fixtures {
   private readonly customerIds: string[] = [];
 
   constructor(private readonly prisma: PrismaClient) {}
+
+  /** One Argon2 hash shared by every fixture user, so signing in works without slowing tests down. */
+  private hash(): Promise<string> {
+    this.passwordHash ??= hashPassword(TEST_PASSWORD);
+    return this.passwordHash;
+  }
 
   async init(): Promise<void> {
     await ensureSystemStatuses(this.prisma);
@@ -35,7 +45,7 @@ export class Fixtures {
       data: {
         normalizedEmail: `${name}@example.test`,
         displayName: name,
-        passwordHash: 'not-a-real-hash',
+        passwordHash: await this.hash(),
         role: 'AGENT',
         agent: {
           create: {
@@ -59,7 +69,7 @@ export class Fixtures {
       data: {
         normalizedEmail: `${name}@example.test`,
         displayName: name,
-        passwordHash: 'not-a-real-hash',
+        passwordHash: await this.hash(),
         role: 'ADMIN',
         ...(opts.withAgentIn
           ? { agent: { create: { displayName: name, groups: { create: opts.withAgentIn.map((g) => ({ groupId: g.id })) } } } }
