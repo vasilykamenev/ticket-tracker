@@ -20,10 +20,10 @@ Node 22.23, TypeScript 7.0.2, `adminjs` 7.8.17, `@adminjs/express` 6.1.1, `@admi
 `list`/`show` of Ticket fail with "no resources with given id" unless User, Agent, Customer, SupportGroup, TicketStatus are registered. Register all, then hide/restrict via `isVisible`, `navigation: false` and action `isAccessible` (stages 3-6). Registration is not exposure.
 
 ## D-004 Local development database
-No Docker on the dev machine, so `npm run dev:db` starts PostgreSQL via `embedded-postgres` (beta tag, dev-only, port 15432, UTF8, data in `.devdb/`). Port 54329 is in a Windows reserved range; avoid 54198-54397.
+No Docker on the dev machine, so `npm run dev:db` starts PostgreSQL via `embedded-postgres` (beta tag, dev-only, port 15432, UTF8 with ICU locale `en-US`, data in `.devdb/`). The ICU locale matters: with locale `C`, `ILIKE` is not case-insensitive for Cyrillic. If `.devdb/` was created earlier with `--locale=C`, delete it and run `npm run dev:db`, then `npx prisma migrate deploy` and `npm run seed:reference`. Port 54329 is in a Windows reserved range; avoid 54198-54397.
 
 ## D-005 AdminJS bundling at startup
-In production AdminJS bundles custom components into `.adminjs/` on startup (~30-60 s here). The container's runtime user needs write access to it. Healthcheck/readiness must tolerate the delay.
+AdminJS bundles custom components only when `NODE_ENV=production` (the Docker image sets it), into `.adminjs/` at startup (~30-60 s here). The bundle is cached: after adding or changing a component delete `.adminjs/` or the browser reports "Component ... has not been bundled". A fresh Docker build starts clean. The container's runtime user needs write access to it. Healthcheck/readiness must tolerate the delay.
 
 ## D-006 One session, own login controller (stage 3)
 `@adminjs/express` `buildRouter` reads `req.session.adminUser` as `currentAdmin`, so the app uses its own `express-session` + `connect-pg-simple` (table `support."Session"`, owned by Prisma) and `buildRouter`, not `buildAuthenticatedRouter` (which would create a second session). `requireUser` reloads the user from the DB on every request and checks `isActive`, an active Agent profile for AGENT, `sessionVersion`, and the 8 h absolute lifetime; idle timeout (30 min) is the sliding cookie/store expiry (`rolling`).
@@ -52,3 +52,17 @@ Synchronizer token in the session + mandatory `Origin` check (missing Origin is 
 - Changing status requires being in the ticket's group scope, not being its assignee.
 - "Active assignee" for NEW/WAITING -> IN_PROGRESS, UNRESOLVED and every reopening means: active agent, member of the active group. WAITING_CUSTOMER and RESOLVED only require an assignee to be set; CLOSED requires none.
 - An agent whose *User* is deactivated is not rejected as an assignee yet (User deactivation must also deactivate the Agent; stage 6).
+
+## D-010 AdminJS resources are guarded (stage 5)
+`GuardedResource` (`src/admin/guarded-resource.ts`) replaces the stock Prisma resource. AdminJS passes the action context to `find/count/findOne/findMany/create/update/delete`, so every data access knows the actor:
+- Reads: mandatory scope AND-ed with user filters (Ticket: group scope; Group/Agent/User/Status: see `resources/reference.ts`). Custom filter conversion: case-insensitive `contains`, `__none__` on references means unassigned, malformed values match nothing instead of raising a database error. Page size is clamped to 100; `id` is a sort tie-breaker.
+- Writes: only through `TicketService` / `CustomerService`; a resource without a write handler is read-only; `delete` always refuses. Generic delete and bulk delete are also marked inaccessible.
+- Fields: `User.passwordHash`/`sessionVersion` are removed from every row for every actor; an AGENT receives only `displayName` of users.
+
+AdminJS behaviours that shaped this (all covered by tests):
+- `isAdapterFor` sees `model` + `client` on a resource instance and silently replaces it with the stock `Resource`. `GuardedResource` clears `client` after construction; removing that line disables every guard.
+- A record counts as saved unless a *property* error exists. Errors without a field (version conflict) are attached to `fallbackErrorField` (`version` / `name`), otherwise the UI says "successfully updated" while nothing was saved.
+- Refusals (not found, forbidden) come back as HTTP 200 with `record.baseError.type`; clients and tests must look at that, not at the status. Errors thrown as `DomainError` outside that path (e.g. creating in a foreign group) keep their HTTP status via the app error handler.
+- `new` and `edit` share one visibility key (`edit`). `ReadOnlyWhenEditing` renders the stock select when creating and read-only text when editing. `version` is not a form field; it travels in the record params and is sent back on save.
+
+Customers: any staff member creates; only ADMIN edits/deactivates (the `edit` action is hidden for AGENT and `CustomerService` refuses too). Customers are never deleted.
