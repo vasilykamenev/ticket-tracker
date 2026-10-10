@@ -1,30 +1,36 @@
 import React from 'react';
 import { FormGroup, Label, Text } from '@adminjs/design-system';
-import { BasePropertyComponent, type EditPropertyProps } from 'adminjs';
+import { BasePropertyComponent, useTranslation, type EditPropertyProps } from 'adminjs';
 
 /**
- * AdminJS uses one set of visible properties for both "new" and "edit". Group, customer and assignee
- * are chosen when a ticket is created but are changed later only through dedicated actions, so on an
- * existing record they are shown read-only. (The server rejects changes to them regardless.)
+ * AdminJS uses one set of visible properties for both "new" and "edit". This component decides per
+ * mode, from `property.custom`:
+ *   mode: 'readonlyOnEdit' (default)  stock input when creating, plain text when editing
+ *         'createOnly'                stock input when creating, nothing when editing
+ *         'editOnly'                  nothing when creating, stock input when editing
+ *   hint: text under a read-only value, e.g. which action changes it
+ * The server rejects forbidden changes regardless; this only keeps the forms honest.
  */
-const ReadOnlyWhenEditing = (props: EditPropertyProps) => {
+const ModeField = (props: EditPropertyProps) => {
   const { record, property } = props;
+  const { translateProperty } = useTranslation();
+  const mode: string = property.custom?.mode ?? 'readonlyOnEdit';
+  const editing = Boolean(record?.id);
+  // Dropping `components` stops BasePropertyComponent from recursing into this component.
+  const stock = <BasePropertyComponent {...props} property={{ ...property, components: undefined }} />;
 
-  if (!record?.id) {
-    // Creating: the stock reference select. Dropping `components` stops BasePropertyComponent from recursing into this one.
-    return <BasePropertyComponent {...props} property={{ ...property, components: undefined }} />;
-  }
+  if (mode === 'createOnly') return editing ? null : stock;
+  if (mode === 'editOnly') return editing ? stock : null;
+  if (!editing) return stock;
 
   const populated = record.populated?.[property.path];
   return (
     <FormGroup>
-      <Label>{property.label}</Label>
+      <Label>{translateProperty(property.path, property.resourceId)}</Label>
       <Text>{populated?.title ?? String(record.params?.[property.path] ?? '—')}</Text>
-      <Text variant="sm">
-        {property.path === 'customer' ? 'The customer cannot be changed after creation.' : 'Change this with the Assign action.'}
-      </Text>
+      {property.custom?.hint && <Text variant="sm">{property.custom.hint}</Text>}
     </FormGroup>
   );
 };
 
-export default ReadOnlyWhenEditing;
+export default ModeField;

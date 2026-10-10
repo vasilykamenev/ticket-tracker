@@ -33,4 +33,18 @@ export const ADMIN_ONLY_READ = {
   search: { isAccessible: adminOnly },
 };
 
+/** Only ADMIN may create or edit; everyone else keeps read access (scoped by the resource). Nothing is ever deleted. */
+export const ADMIN_WRITE = {
+  ...NO_DELETE,
+  new: { isAccessible: adminOnly },
+  edit: { isAccessible: adminOnly },
+};
+
+/** ADMIN-only resource: invisible to everyone else, writable by ADMIN. */
+export const ADMIN_MANAGED = {
+  ...ADMIN_ONLY_READ,
+  new: { isAccessible: adminOnly },
+  edit: { isAccessible: adminOnly },
+};
+
 export { adminOnly };
