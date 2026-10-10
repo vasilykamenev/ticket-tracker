@@ -21,7 +21,7 @@ npm run dev
 Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at least 32 characters.
 
 ## Tests
-`npm test` runs unit and integration tests. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service.
+`npm test` runs unit and integration tests. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service. Use a throwaway database: some tests briefly switch other active administrators off (and always restore them).
 
 ## Authentication
 Local staff accounts, Argon2id hashes, PostgreSQL sessions, CSRF token + Origin check, login rate limits per IP and per account (in-memory, single replica). See `docs/decisions.md` D-006..D-008.
