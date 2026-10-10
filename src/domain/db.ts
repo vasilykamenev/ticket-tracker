@@ -45,6 +45,25 @@ export async function lockStatus(tx: Tx, statusId: string, mode: LockMode): Prom
 }
 
 /**
+ * Locks a ticket row and returns its group and status as they are after any concurrent change committed.
+ * Comments take this lock so a comment cannot slip onto a ticket that is being closed or marked unresolved:
+ * a status change updates the same row, so one of the two waits for the other. 'update' is for writers that
+ * also touch the ticket (adding a comment bumps updatedAt); two 'share' holders never block each other.
+ */
+export async function lockTicket(tx: Tx, ticketId: string, mode: LockMode): Promise<{ groupId: string; statusCode: string } | null> {
+  // One table only: when a concurrent update commits while we wait, Postgres re-reads the locked row but not
+  // the tables joined to it, so a JOIN here would drop the row. The status is read separately afterwards.
+  const rows =
+    mode === 'share'
+      ? await tx.$queryRaw<{ groupId: string; statusId: string }[]>`SELECT "groupId", "statusId" FROM support."Ticket" WHERE id = ${ticketId}::uuid FOR SHARE`
+      : await tx.$queryRaw<{ groupId: string; statusId: string }[]>`SELECT "groupId", "statusId" FROM support."Ticket" WHERE id = ${ticketId}::uuid FOR UPDATE`;
+  const row = rows[0];
+  if (!row) return null;
+  const status = await tx.ticketStatus.findUniqueOrThrow({ where: { id: row.statusId }, select: { code: true } });
+  return { groupId: row.groupId, statusCode: status.code };
+}
+
+/**
  * Locks every active ADMIN row (in id order, so concurrent callers cannot deadlock) and returns their
  * ids. Anything that could remove an active administrator takes this lock first, so two concurrent
  * demotions cannot each see "someone else is still an admin".

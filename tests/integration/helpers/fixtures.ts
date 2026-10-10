@@ -111,6 +111,7 @@ export class Fixtures {
       select: { id: true },
     });
     const ticketIds = tickets.map((t) => t.id);
+    await this.prisma.comment.deleteMany({ where: { ticketId: { in: ticketIds } } });
     await this.prisma.ticketHistory.deleteMany({ where: { ticketId: { in: ticketIds } } });
     await this.prisma.ticket.deleteMany({ where: { id: { in: ticketIds } } });
     await this.prisma.agentGroup.deleteMany({ where: { groupId: { in: this.groupIds } } });
