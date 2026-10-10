@@ -1,5 +1,6 @@
 // Access policies, requirements section 7. Pure functions: callers load the scope inside their transaction.
 import type { Prisma } from '@prisma/client';
+import { ForbiddenError } from '../domain/errors.js';
 
 export interface Actor {
   userId: string;
@@ -29,4 +30,9 @@ export function ticketScopeWhere(scope: Scope): Prisma.TicketWhereInput {
 
 export function isAdmin(actor: Actor): boolean {
   return actor.role === 'ADMIN';
+}
+
+/** The one place that turns "ADMIN only" into an error, so every service refuses in the same way. */
+export function requireAdmin(actor: Actor, message = 'Only an administrator may do this'): void {
+  if (!isAdmin(actor)) throw new ForbiddenError('admin_only', message);
 }

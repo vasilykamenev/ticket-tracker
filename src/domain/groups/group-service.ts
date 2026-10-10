@@ -1,17 +1,12 @@
 import type { PrismaClient, SupportGroup } from '@prisma/client';
-import { lockAgent, lockGroup, type Tx } from '../db.js';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
-import { type Actor, isAdmin } from '../../policies/ticket-policy.js';
+import { isUniqueViolation, lockAgent, lockGroup, type Tx } from '../db.js';
+import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
+import { type Actor, requireAdmin } from '../../policies/ticket-policy.js';
 import { parseInput } from '../tickets/schemas.js';
 import { ACTIVE_STATUSES } from '../tickets/workflow.js';
 import { createGroupSchema, membershipSchema, updateGroupSchema } from './schemas.js';
 
 const activeTicket = { status: { code: { in: [...ACTIVE_STATUSES] } } };
-const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === 'P2002';
-
-function requireAdmin(actor: Actor): void {
-  if (!isAdmin(actor)) throw new ForbiddenError('admin_only', 'Only an administrator may do this');
-}
 
 async function deactivateGroupInTx(tx: Tx, groupId: string): Promise<void> {
   const group = await lockGroup(tx, groupId, 'update');

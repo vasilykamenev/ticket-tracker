@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, Ticket, TicketStatus } from '@prisma/client';
 import { z } from 'zod';
-import { lockAgent, lockGroup, lockStatus, loadScope, type Tx } from '../db.js';
+import { isRecordNotFound, lockAgent, lockGroup, lockStatus, loadScope, type Tx } from '../db.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
 import {
@@ -258,7 +258,7 @@ export class TicketService {
       });
     } catch (err) {
       // P2025: no row with this id AND version -> someone else changed it first.
-      if ((err as { code?: string }).code === 'P2025') {
+      if (isRecordNotFound(err)) {
         throw new ConflictError('version_conflict', 'The ticket was changed by someone else. Refresh and try again.');
       }
       throw err;

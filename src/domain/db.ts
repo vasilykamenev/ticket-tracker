@@ -2,6 +2,16 @@ import type { Prisma } from '@prisma/client';
 import { type Actor, type Scope, scopeFor } from '../policies/ticket-policy.js';
 
 export type Tx = Prisma.TransactionClient;
+/** Prisma "unique constraint failed" (P2002). */
+export function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === 'P2002';
+}
+
+/** Prisma "record to update/delete does not exist" (P2025). */
+export function isRecordNotFound(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === 'P2025';
+}
+
 export type LockMode = 'share' | 'update';
 
 /**

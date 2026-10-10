@@ -1,8 +1,9 @@
 import type { Customer, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
+import { isRecordNotFound, isUniqueViolation } from '../db.js';
+import { NotFoundError, ValidationError } from '../errors.js';
 import { normalizeEmail } from '../users/email.js';
-import { type Actor, isAdmin } from '../../policies/ticket-policy.js';
+import { type Actor, requireAdmin } from '../../policies/ticket-policy.js';
 import { parseInput } from '../tickets/schemas.js';
 
 /** Empty strings from forms become null. */
@@ -35,10 +36,6 @@ export const updateCustomerSchema = z
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
-function isUniqueViolation(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === 'P2002';
-}
-
 const DUPLICATE = new ValidationError('validation', 'Invalid input', { email: 'a customer with this email already exists' });
 
 /**
@@ -61,7 +58,7 @@ export class CustomerService {
   }
 
   async update(actor: Actor, customerId: string, input: unknown): Promise<Customer> {
-    if (!isAdmin(actor)) throw new ForbiddenError('admin_only', 'Only an administrator may edit customers');
+    requireAdmin(actor, 'Only an administrator may edit customers');
     const data = parseInput(updateCustomerSchema, input);
     if (!z.uuid().safeParse(customerId).success) throw new NotFoundError('customer');
     try {
@@ -77,7 +74,7 @@ export class CustomerService {
       });
     } catch (err) {
       if (isUniqueViolation(err)) throw DUPLICATE;
-      if ((err as { code?: string } | null)?.code === 'P2025') throw new NotFoundError('customer');
+      if (isRecordNotFound(err)) throw new NotFoundError('customer');
       throw err;
     }
   }

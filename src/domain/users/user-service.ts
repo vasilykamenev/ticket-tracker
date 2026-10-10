@@ -1,17 +1,12 @@
 import type { Prisma, PrismaClient, Role, User } from '@prisma/client';
 import { hashPassword } from '../../auth/password.js';
-import { lockActiveAdmins, type Tx } from '../db.js';
+import { isRecordNotFound, isUniqueViolation, lockActiveAdmins, type Tx } from '../db.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
-import { type Actor, isAdmin } from '../../policies/ticket-policy.js';
+import { type Actor, requireAdmin } from '../../policies/ticket-policy.js';
 import { parseInput } from '../tickets/schemas.js';
 import { deactivateAgentInTx } from './agent-service.js';
 import { createUserSchema, passwordField, roleField, updateUserSchema } from './schemas.js';
 
-function requireAdmin(actor: Actor): void {
-  if (!isAdmin(actor)) throw new ForbiddenError('admin_only', 'Only an administrator may do this');
-}
-
-const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === 'P2002';
 const DUPLICATE_EMAIL = new ValidationError('validation', 'Invalid input', { email: 'a staff account with this email already exists' });
 
 /**
@@ -114,7 +109,7 @@ export class UserService {
     try {
       await this.prisma.user.update({ where: { id: userId }, data: { passwordHash, sessionVersion: { increment: 1 } } });
     } catch (err) {
-      if ((err as { code?: string } | null)?.code === 'P2025') throw new NotFoundError('user');
+      if (isRecordNotFound(err)) throw new NotFoundError('user');
       throw err;
     }
   }

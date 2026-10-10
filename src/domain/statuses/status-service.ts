@@ -1,8 +1,8 @@
 import type { PrismaClient, TicketStatus } from '@prisma/client';
 import { z } from 'zod';
 import { lockStatus } from '../db.js';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
-import { type Actor, isAdmin } from '../../policies/ticket-policy.js';
+import { ConflictError, NotFoundError, ValidationError } from '../errors.js';
+import { type Actor, requireAdmin } from '../../policies/ticket-policy.js';
 import { parseInput } from '../tickets/schemas.js';
 import { updateStatusSchema } from './schemas.js';
 
@@ -15,7 +15,7 @@ export class StatusService {
   constructor(private readonly prisma: PrismaClient) {}
 
   async update(actor: Actor, statusId: string, input: unknown): Promise<TicketStatus> {
-    if (!isAdmin(actor)) throw new ForbiddenError('admin_only', 'Only an administrator may do this');
+    requireAdmin(actor);
     const data = parseInput(updateStatusSchema, input);
     if (!z.uuid().safeParse(statusId).success) throw new NotFoundError('status');
     return this.prisma.$transaction(async (tx) => {
