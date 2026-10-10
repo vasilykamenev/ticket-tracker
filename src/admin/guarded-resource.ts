@@ -20,7 +20,7 @@ const uuid = z.uuid();
 const IMPOSSIBLE: Where = { id: { in: [] } };
 
 /** The signed-in staff member, taken from the session by the AdminJS plugin. Fails closed. */
-export function actorFromContext(context?: ActionContext): Actor {
+export function actorFromContext(context?: { currentAdmin?: unknown }): Actor {
   const admin = context?.currentAdmin as Partial<SessionUser> | undefined;
   if (!admin?.id || (admin.role !== 'ADMIN' && admin.role !== 'AGENT')) {
     throw new ForbiddenError('unauthenticated', 'Sign in required');
@@ -36,6 +36,8 @@ export interface GuardedOptions {
   /** Writes go through domain services only; without a handler the resource is read-only. */
   create?: (actor: Actor, params: Params) => Promise<Row>;
   update?: (actor: Actor, id: string, params: Params) => Promise<Row>;
+  /** Virtual values derived from a row (e.g. ticket age); never persisted. */
+  computed?: (row: Row) => Params;
   /** Maps domain field names (e.g. groupId) to AdminJS property paths (e.g. group) in error messages. */
   errorFields?: Record<string, string>;
   /**
@@ -80,7 +82,8 @@ export class GuardedResource extends Resource {
   }
 
   private toRecord(actor: Actor, row: Row): BaseRecord {
-    return new BaseRecord(this.prepareReturnValues(this.guard.redact ? this.guard.redact(actor, row) : row), this);
+    const visible = this.guard.redact ? this.guard.redact(actor, row) : row;
+    return new BaseRecord({ ...this.prepareReturnValues(visible), ...this.guard.computed?.(visible) }, this);
   }
 
   override async count(filter: Filter, context?: ActionContext): Promise<number> {
