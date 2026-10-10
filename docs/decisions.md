@@ -37,3 +37,18 @@ Synchronizer token in the session + mandatory `Origin` check (missing Origin is 
 - Login rate limits are in-memory: correct for a single replica only; multiple replicas need a shared store.
 - Argon2id parameters: m=19456 KiB, t=2, p=1 (OWASP minimum); revisit against the production host's CPU.
 - The model/resource exposure in AdminJS is still unrestricted for any signed-in user; RBAC is stages 4-6.
+
+## D-009 Domain services and policies (stage 4)
+- `TicketService` (create, update, assign, changeStatus, get), `GroupService`, `AgentService` take an `Actor` (`userId`, `role`, `agentId`) and load the group scope inside their own transaction. Callers (AdminJS actions, stage 5) must go through them; standard AdminJS new/edit/delete must be disabled or replaced.
+- Every write is one transaction: ticket change + `version` increment + `TicketHistory` row. Concurrent writers are serialized by `UPDATE ... WHERE id AND version`; the loser gets `version_conflict` (409).
+- Out-of-scope and unknown ids give 404 (`not_found`); in-scope but insufficient role gives 403 (`admin_only`, `group_not_allowed`).
+- Row locks (`FOR SHARE` on assign, `FOR UPDATE` on deactivate/remove-member, always group before agent) prevent an active ticket ending up on an inactive agent when assignment and deactivation race. Covered by a repeated race test.
+- `changeStatusInTx` is the unit reused by the all-or-nothing bulk action (stage 9).
+- Reopening takes an optional `groupId`/`assignedAgentId` in the same call, so the transition and the new assignee are atomic.
+
+### Interpretations of the requirements (confirm or change)
+- Ordinary edit covers subject, description and priority (the matrix says "description/priority"; subject added so typos can be fixed).
+- On a group change the assignee is never cleared implicitly: keeping an assignee who is not in the new group fails; to unassign (NEW only) pass `assignedAgentId: null`.
+- Changing status requires being in the ticket's group scope, not being its assignee.
+- "Active assignee" for NEW/WAITING -> IN_PROGRESS, UNRESOLVED and every reopening means: active agent, member of the active group. WAITING_CUSTOMER and RESOLVED only require an assignee to be set; CLOSED requires none.
+- An agent whose *User* is deactivated is not rejected as an assignee yet (User deactivation must also deactivate the Agent; stage 6).
