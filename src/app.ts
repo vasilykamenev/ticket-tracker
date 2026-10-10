@@ -20,7 +20,11 @@ import { customerResource } from './admin/resources/customer.js';
 import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
+import { TicketQueries } from './domain/tickets/ticket-queries.js';
 import { TicketService } from './domain/tickets/ticket-service.js';
+import { Components } from './admin/component-loader.js';
+import { catalogTranslations } from './admin/field-catalog.js';
+import { actorFromContext } from './admin/guarded-resource.js';
 
 AdminJS.registerAdapter({ Database, Resource });
 
@@ -35,17 +39,34 @@ export interface AppDeps {
 function buildAdmin(prisma: PrismaClient): AdminJS {
   const tickets = new TicketService(prisma);
   const customers = new CustomerService(prisma);
+  const queries = new TicketQueries(prisma);
   return new AdminJS({
     rootPath: '/admin',
     logoutPath: '/auth/logout',
     componentLoader,
     assets: { scripts: ['/auth/csrf-client.js'] },
     settings: { defaultPerPage: 25 },
+    // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
+    dashboard: {
+      component: Components.Dashboard,
+      handler: async (_request, _response, context) => queries.dashboard(actorFromContext(context)),
+    },
+    locale: {
+      language: 'en',
+      translations: {
+        en: {
+          resources: {
+            ...catalogTranslations().resources,
+            Ticket: { ...catalogTranslations().resources.Ticket, actions: { changeStatus: 'Change status', assignTicket: 'Assign' } },
+          },
+        },
+      },
+    },
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).
     resources: [
-      ticketResource(prisma, tickets),
-      customerResource(prisma, customers),
+      ticketResource(prisma, tickets, queries),
+      customerResource(prisma, customers, queries),
       groupResource(prisma),
       agentResource(prisma),
       statusResource(prisma),
@@ -90,7 +111,7 @@ export async function buildApp({ env, prisma, sessionPool }: AppDeps): Promise<e
   // Domain errors keep their HTTP status; anything else is a 500. Never leak stack traces, URLs or secrets.
   const onError: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err instanceof DomainError) {
-      res.status(err.status).json({ error: err.code, message: err.message });
+      res.status(err.status).json({ error: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
       return;
     }
     // Error messages (Prisma in particular) can embed submitted data, so log only the error type and code.
