@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.adminjs/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.devdb/
