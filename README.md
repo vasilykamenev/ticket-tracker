@@ -13,8 +13,17 @@ npm install
 npm run dev:db                      # local PostgreSQL on :15432 (no Docker needed)
 # set DATABASE_URL / DIRECT_URL to postgresql://postgres:postgres@localhost:15432/tickets?schema=support
 npx prisma migrate dev
+npm run admin:create -- --email admin@example.test   # password: hidden prompt or ADMIN_PASSWORD env
 npm run dev
 ```
+
+Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at least 32 characters.
+
+## Tests
+`npm test` runs unit and integration tests. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service.
+
+## Authentication
+Local staff accounts, Argon2id hashes, PostgreSQL sessions, CSRF token + Origin check, login rate limits per IP and per account (in-memory, single replica). See `docs/decisions.md` D-006..D-008.
 
 ## Layout
 See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `scripts/` the seed/admin/storage commands, `tests/` unit, integration and e2e suites.
