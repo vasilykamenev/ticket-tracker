@@ -26,6 +26,24 @@ export async function lockGroup(tx: Tx, groupId: string, mode: LockMode): Promis
   return rows[0] ?? null;
 }
 
+export async function lockStatus(tx: Tx, statusId: string, mode: LockMode): Promise<{ isActive: boolean } | null> {
+  const rows =
+    mode === 'share'
+      ? await tx.$queryRaw<{ isActive: boolean }[]>`SELECT "isActive" FROM support."TicketStatus" WHERE id = ${statusId}::uuid FOR SHARE`
+      : await tx.$queryRaw<{ isActive: boolean }[]>`SELECT "isActive" FROM support."TicketStatus" WHERE id = ${statusId}::uuid FOR UPDATE`;
+  return rows[0] ?? null;
+}
+
+/**
+ * Locks every active ADMIN row (in id order, so concurrent callers cannot deadlock) and returns their
+ * ids. Anything that could remove an active administrator takes this lock first, so two concurrent
+ * demotions cannot each see "someone else is still an admin".
+ */
+export async function lockActiveAdmins(tx: Tx): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM support."User" WHERE role = 'ADMIN' AND "isActive" = true ORDER BY id FOR UPDATE`;
+  return rows.map((r) => r.id);
+}
+
 /** Loaded inside the caller's transaction so membership changes are seen immediately. */
 export async function loadScope(tx: Tx, actor: Actor): Promise<Scope> {
   if (actor.role === 'ADMIN') return scopeFor(actor, []);
