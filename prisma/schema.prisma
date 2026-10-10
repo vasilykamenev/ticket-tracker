@@ -1,10 +1,8 @@
 // Data model per docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md, section 5.
-// NOTE: multi-schema syntax depends on the Prisma major version chosen in stage 1
-// (package compatibility). Adjust datasource/generator config to the pinned version.
+// Prisma 6: multiSchema is GA (no preview flag). Pinned in stage 1, see docs/decisions.md.
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema"]
 }
 
 datasource db {

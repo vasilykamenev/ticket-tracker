@@ -9,3 +9,4 @@ test-results/
 !.env.example
 *.log
 .DS_Store
+.devdb/
