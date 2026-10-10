@@ -66,3 +66,13 @@ AdminJS behaviours that shaped this (all covered by tests):
 - `new` and `edit` share one visibility key (`edit`). `ReadOnlyWhenEditing` renders the stock select when creating and read-only text when editing. `version` is not a form field; it travels in the record params and is sent back on save.
 
 Customers: any staff member creates; only ADMIN edits/deactivates (the `edit` action is hidden for AGENT and `CustomerService` refuses too). Customers are never deleted.
+
+## D-011 Ticket actions, read models and custom components (stage 5b)
+- **Actions.** `changeStatus` and `assignTicket` are AdminJS record actions with React forms (`ChangeStatusForm`, `AssignForm`); they POST to `TicketService`. Hidden record actions `formState`, `history` (Ticket) and `customerTickets` (Customer) return JSON for the components. The data comes from `TicketQueries`, which applies the same scope as the list: out-of-scope tickets behave as if absent.
+- **AdminJS contract.** A record action must return `{ record }` (RecordJSON) or it throws `ConfigurationError`; our data rides along next to it. Unlike the built-in actions, our mutation actions answer with real HTTP statuses (`422` + `details`, `409`, `403`) so the forms can show field errors. When AdminJS cannot load the record at all (outside the scope) it answers HTTP 200 with a `NotFoundError` base error before our handler runs.
+- **The forms only offer what the server will accept** (`formState` lists the transitions allowed for this actor and status, and the active members of the selected group), but the service re-validates everything.
+- **Saved filters.** The dashboard shows live counts and links to ticket-list URLs: "My tickets" (`filters.assignedAgent=<agentId>`), "Unassigned" (`filters.assignedAgent=__none__`), "Waiting for customer" and "Unresolved" (`filters.status=<id>`). Counts and lists share one scope, so they always agree.
+- **History** is read-only, newest first, 20 per page, with ids resolved to names. **Age** is computed on read (`age.ts`), never stored.
+- **Labels and help text** come from `field-catalog.ts`. AdminJS `PropertyOptions` has no `label`: labels are generated as locale translations (`catalogTranslations()`), help text goes in `description`.
+- **Components load from `dist/`** when it exists (they import each other with `.js` specifiers). For `npm run dev` run `npm run build` once, or `npm run build:watch` alongside, and delete `.adminjs/` after changing a component (D-005).
+- **UI language is English** (requirements are English; UNRESOLVED is "Unresolved" there). A Russian UI would be a locale in `field-catalog.ts` plus translations of the component strings. Open question for the product owner.

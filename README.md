@@ -14,6 +14,7 @@ npm run dev:db                      # local PostgreSQL on :15432 (no Docker need
 # set DATABASE_URL / DIRECT_URL to postgresql://postgres:postgres@localhost:15432/tickets?schema=support
 npx prisma migrate dev
 npm run admin:create -- --email admin@example.test   # password: hidden prompt or ADMIN_PASSWORD env
+npm run build        # the admin UI components are loaded from dist/ (run build:watch while editing them)
 npm run dev
 ```
 

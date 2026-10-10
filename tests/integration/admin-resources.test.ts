@@ -2,47 +2,16 @@ import { PrismaClient } from '@prisma/client';
 import type express from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp } from '../../src/app.js';
-import { createSessionPool } from '../../src/auth/session.js';
-import { loadEnv } from '../../src/config/env.js';
 import { TicketService } from '../../src/domain/tickets/ticket-service.js';
-import { Fixtures, TEST_PASSWORD } from './helpers/fixtures.js';
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error('DATABASE_URL is required for integration tests (see .env.example)');
-
-const ORIGIN = 'http://localhost:3000';
-const env = loadEnv({
-  APP_ENV: 'test',
-  PUBLIC_URL: ORIGIN,
-  DATABASE_URL: databaseUrl,
-  SESSION_SECRET: 'integration-test-secret-integration-test',
-  LOGIN_MAX_PER_IP: '1000',
-  LOGIN_MAX_FAILED_PER_ACCOUNT: '1000',
-});
+import type { Pool } from 'pg';
+import { Fixtures } from './helpers/fixtures.js';
+import { API, createTestApp, signIn, type Session } from './helpers/http.js';
 
 const prisma = new PrismaClient();
-const pool = createSessionPool(env);
 const fx = new Fixtures(prisma);
 const tickets = new TicketService(prisma);
 let app: express.Express;
-
-const API = '/admin/api/resources';
-const csrfFrom = (html: string) => /name="_csrf" value="([^"]+)"/.exec(html)?.[1] ?? '';
-
-/** A signed-in session: GET helpers plus POST helpers that carry Origin and the CSRF header. */
-async function signIn(email: string) {
-  const agent = request.agent(app);
-  const page = await agent.get('/auth/login');
-  const res = await agent.post('/auth/login').set('Origin', ORIGIN).type('form').send({ _csrf: csrfFrom(page.text), email, password: TEST_PASSWORD });
-  expect(res.status).toBe(303);
-  const { token } = (await agent.get('/auth/csrf')).body as { token: string };
-  return {
-    get: (url: string) => agent.get(url),
-    post: (url: string, body: object = {}) => agent.post(url).set('Origin', ORIGIN).set('X-CSRF-Token', token).send(body),
-  };
-}
-type Session = Awaited<ReturnType<typeof signIn>>;
+let pool: Pool;
 
 /** AdminJS reports refusals as HTTP 200 with a typed base error; the data must also stay untouched. */
 const refusal = (res: request.Response): string | undefined => res.body?.record?.baseError?.type ?? res.body?.notice?.type;
@@ -63,7 +32,7 @@ let ticketA2: { id: string; version: number };
 
 beforeAll(async () => {
   await fx.init();
-  app = await buildApp({ env, prisma, sessionPool: pool });
+  ({ app, pool } = await createTestApp(prisma));
   groupA = await fx.group();
   groupB = await fx.group();
   admin = await fx.admin();
@@ -88,25 +57,25 @@ afterAll(async () => {
 
 describe('ticket list scope', () => {
   it('shows ADMIN every group and an AGENT only their own', async () => {
-    const adminSession = await signIn(admin.user.normalizedEmail);
+    const adminSession = await signIn(app, admin.user.normalizedEmail);
     const all = ids(await list(adminSession, 'Ticket', `filters.customer=${customer.id}`));
     expect(all).toEqual(expect.arrayContaining([ticketA.id, ticketA2.id, ticketB.id]));
 
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const own = await list(a, 'Ticket', `filters.customer=${customer.id}`);
     expect(ids(own).sort()).toEqual([ticketA.id, ticketA2.id].sort());
     expect(own.body.meta.total).toBe(2);
   });
 
   it('cannot be widened by a user filter, and the total does not count hidden tickets', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const foreign = await list(a, 'Ticket', `filters.group=${groupB.id}`);
     expect(foreign.body.records).toHaveLength(0);
     expect(foreign.body.meta.total).toBe(0);
   });
 
   it('hides tickets of other groups on show, edit and search as 404', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     for (const view of ['show', 'edit']) {
       const hidden = await a.get(`${API}/Ticket/records/${ticketB.id}/${view}`);
       expect(refusal(hidden), view).toBe('NotFoundError');
@@ -120,21 +89,21 @@ describe('ticket list scope', () => {
 
   it('gives an AGENT with no group an empty list', async () => {
     const loner = await fx.agent([]);
-    const s = await signIn(loner.user.normalizedEmail);
+    const s = await signIn(app, loner.user.normalizedEmail);
     expect((await list(s, 'Ticket')).body.records).toHaveLength(0);
   });
 });
 
 describe('ticket filters, sorting and paging', () => {
   it('searches the subject case-insensitively and by number', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     expect(ids(await list(s, 'Ticket', 'filters.subject=printer OFFLINE'))).toContain(ticketA.id);
     const row = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketB.id } });
     expect(ids(await list(s, 'Ticket', `filters.number=${row.number}`))).toEqual([ticketB.id]);
   });
 
   it('filters by priority, group and unassigned', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const high = ids(await list(s, 'Ticket', `filters.priority=HIGH&filters.customer=${customer.id}`));
     expect(high).toEqual([ticketA.id]);
     const unassigned = ids(await list(s, 'Ticket', `filters.assignedAgent=__none__&filters.group=${groupA.id}`));
@@ -142,7 +111,7 @@ describe('ticket filters, sorting and paging', () => {
   });
 
   it('filters by status and by date range', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const status = await prisma.ticketStatus.findUniqueOrThrow({ where: { code: 'NEW' } });
     expect(ids(await list(s, 'Ticket', `filters.status=${status.id}&filters.customer=${customer.id}`))).toHaveLength(3);
     const future = new Date(Date.now() + 86_400_000).toISOString();
@@ -152,7 +121,7 @@ describe('ticket filters, sorting and paging', () => {
   });
 
   it('treats malformed filter values as "no match", not as a server error', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     for (const q of ['filters.group=not-a-uuid', 'filters.number=abc', 'filters.priority=BOGUS', 'filters.customer=%27%3B--']) {
       const res = await list(s, 'Ticket', q);
       expect(res.status, q).toBe(200);
@@ -161,7 +130,7 @@ describe('ticket filters, sorting and paging', () => {
   });
 
   it('sorts by most recently updated first', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const fresh = await tickets.create(admin.actor, { subject: 'Newest ticket', description: 'd', customerId: customer.id, groupId: groupB.id });
     const res = await list(s, 'Ticket', `filters.customer=${customer.id}`);
     expect(ids(res)[0]).toBe(fresh.id);
@@ -184,7 +153,7 @@ describe('ticket filters, sorting and paging', () => {
         createdByUserId: admin.user.id,
       })),
     });
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const page = await list(s, 'Ticket', `filters.group=${group.id}&perPage=500`);
     expect(page.body.records).toHaveLength(100);
     expect(page.body.meta.total).toBe(105);
@@ -196,7 +165,7 @@ describe('ticket filters, sorting and paging', () => {
 
 describe('ticket writes go through the service', () => {
   it('creates a NEW ticket with history, and rejects a group the agent does not belong to', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const ok = await a.post(`${API}/Ticket/actions/new`, { subject: 'Created via admin', description: 'Body', customer: customer.id, group: groupA.id, priority: 'URGENT' });
     expect(ok.status).toBe(200);
     expect(ok.body.record.errors).toEqual({});
@@ -211,14 +180,14 @@ describe('ticket writes go through the service', () => {
   });
 
   it('shows validation errors next to the fields', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const bad = await a.post(`${API}/Ticket/actions/new`, { subject: 'abc', description: '', customer: customer.id, group: groupA.id });
     expect(bad.status).toBe(200);
     expect(Object.keys(bad.body.record.errors)).toEqual(expect.arrayContaining(['subject', 'description']));
   });
 
   it('edits allowed fields, bumps the version and reports a stale version as a form error', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const shown = await a.get(`${API}/Ticket/records/${ticketA.id}/show`);
     const params = shown.body.record.params as Record<string, unknown>;
     const ok = await a.post(`${API}/Ticket/records/${ticketA.id}/edit`, { ...params, subject: 'Printer offline, room A (updated)' });
@@ -236,7 +205,7 @@ describe('ticket writes go through the service', () => {
   });
 
   it('rejects an edit that tries to change group, assignee, status or customer', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const params = (await a.get(`${API}/Ticket/records/${ticketA.id}/show`)).body.record.params as Record<string, unknown>;
     const done = await prisma.ticketStatus.findUniqueOrThrow({ where: { code: 'CLOSED' } });
     const res = await a.post(`${API}/Ticket/records/${ticketA.id}/edit`, {
@@ -253,14 +222,14 @@ describe('ticket writes go through the service', () => {
   });
 
   it('refuses to edit a ticket outside the agent scope', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const res = await a.post(`${API}/Ticket/records/${ticketB.id}/edit`, { subject: 'Hijacked subject' });
     expect(refusal(res)).toBe('NotFoundError');
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticketB.id } })).subject).not.toBe('Hijacked subject');
   });
 
   it('offers no way to delete tickets', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     expect(refusal(await s.post(`${API}/Ticket/records/${ticketA2.id}/delete`))).toBe('ForbiddenError');
     expect(refusal(await s.post(`${API}/Ticket/bulk/bulkDelete?recordIds=${ticketA2.id}`))).toBe('ForbiddenError');
     expect(await prisma.ticket.count({ where: { id: ticketA2.id } })).toBe(1);
@@ -269,7 +238,7 @@ describe('ticket writes go through the service', () => {
 
 describe('customers', () => {
   it('lets any staff member create a customer and search by name, email and company', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const email = `new-customer-${Date.now()}@example.test`;
     const created = await a.post(`${API}/Customer/actions/new`, { name: 'Zed Тестовый', emailNormalized: ` ${email.toUpperCase()} `, company: 'Acme', phone: '' });
     expect(created.body.record.errors).toEqual({});
@@ -285,7 +254,7 @@ describe('customers', () => {
   });
 
   it('rejects a duplicate or malformed email with a field error', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const dup = await a.post(`${API}/Customer/actions/new`, { name: 'Dup', emailNormalized: customer.emailNormalized.toUpperCase() });
     expect(Object.keys(dup.body.record.errors)).toContain('emailNormalized');
     const bad = await a.post(`${API}/Customer/actions/new`, { name: 'Bad', emailNormalized: 'not-an-email' });
@@ -293,12 +262,12 @@ describe('customers', () => {
   });
 
   it('lets only ADMIN edit or deactivate', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const denied = await a.post(`${API}/Customer/records/${customer.id}/edit`, { name: 'Renamed by agent' });
     expect(refusal(denied)).toBe('ForbiddenError');
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } })).name).toBe(customer.name);
 
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const params = (await s.get(`${API}/Customer/records/${customer.id}/show`)).body.record.params as Record<string, unknown>;
     const ok = await s.post(`${API}/Customer/records/${customer.id}/edit`, { ...params, company: 'Edited Inc', isActive: true });
     expect(ok.body.record.errors).toEqual({});
@@ -307,7 +276,7 @@ describe('customers', () => {
 
   it('keeps inactive customers out of new tickets', async () => {
     const inactive = await fx.customer({ active: false });
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const res = await a.post(`${API}/Ticket/actions/new`, { subject: 'For inactive customer', description: 'd', customer: inactive.id, group: groupA.id });
     expect(Object.keys(res.body.record.errors)).toContain('customer');
   });
@@ -315,7 +284,7 @@ describe('customers', () => {
 
 describe('reference data', () => {
   it('limits group and agent lookups for an AGENT to their own groups', async () => {
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     const groups = ids(await a.get(`${API}/SupportGroup/actions/list`));
     expect(groups).toContain(groupA.id);
     expect(groups).not.toContain(groupB.id);
@@ -325,13 +294,13 @@ describe('reference data', () => {
   });
 
   it('never returns password hashes, and shows staff accounts to ADMIN only', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     const users = await s.get(`${API}/User/actions/list?perPage=100`);
     expect(users.status).toBe(200);
     expect(JSON.stringify(users.body)).not.toContain('passwordHash');
     expect(JSON.stringify(users.body)).not.toContain('not-a-real-hash');
 
-    const a = await signIn(agentA.user.normalizedEmail);
+    const a = await signIn(app, agentA.user.normalizedEmail);
     expect(refusal(await a.get(`${API}/User/actions/list`))).toBe('ForbiddenError');
     const shown = await a.get(`${API}/Ticket/records/${ticketA.id}/show`);
     // The creator's name is readable (needed to display the ticket) but nothing else about the account.
@@ -343,7 +312,7 @@ describe('reference data', () => {
   });
 
   it('exposes no write access to staff, groups, agents or statuses', async () => {
-    const s = await signIn(admin.user.normalizedEmail);
+    const s = await signIn(app, admin.user.normalizedEmail);
     for (const resource of ['User', 'Agent', 'SupportGroup', 'TicketStatus']) {
       const res = await s.post(`${API}/${resource}/actions/new`, { displayName: 'x', name: 'x', code: 'X' });
       expect(refusal(res), resource).toBe('ForbiddenError');
