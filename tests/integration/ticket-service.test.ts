@@ -358,21 +358,32 @@ describe('status workflow', () => {
 });
 
 describe('structural guards', () => {
-  it('refuses to deactivate an agent who holds active tickets, and allows it after reassignment', async () => {
-    const s = await inProgress();
-    const err = await failure(agents.deactivateAgent(s.admin.actor, s.agent.agent.id));
-    expect(err.code).toBe('has_active_tickets');
+  /** An ADMIN who also works tickets: the only kind of profile that can be deactivated on its own. */
+  const worker = (group: { id: string }) => fx.admin({ withAgentIn: [group] });
 
-    const other = await fx.agent([{ id: s.ticket.groupId }]);
-    await tickets.assign(s.admin.actor, s.ticket.id, s.ticket.version, { assignedAgentId: other.agent.id });
-    await agents.deactivateAgent(s.admin.actor, s.agent.agent.id);
-    expect((await prisma.agent.findUniqueOrThrow({ where: { id: s.agent.agent.id } })).isActive).toBe(false);
+  it('refuses to deactivate an agent who holds active tickets, and allows it after reassignment', async () => {
+    const group = await fx.group();
+    const customer = await fx.customer();
+    const admin = await fx.admin();
+    const busy = await worker(group);
+    const other = await worker(group);
+    const ticket = await tickets.create(admin.actor, { subject: 'Busy worker', description: 'd', customerId: customer.id, groupId: group.id, assignedAgentId: busy.agent!.id });
+
+    expect((await failure(agents.deactivateAgent(admin.actor, busy.agent!.id))).code).toBe('has_active_tickets');
+    await tickets.assign(admin.actor, ticket.id, ticket.version, { assignedAgentId: other.agent!.id });
+    await agents.deactivateAgent(admin.actor, busy.agent!.id);
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: busy.agent!.id } })).isActive).toBe(false);
   });
 
   it('ignores RESOLVED, CLOSED and UNRESOLVED tickets when deactivating an agent', async () => {
-    const s = await inProgress();
-    await tickets.changeStatus(s.admin.actor, s.ticket.id, s.ticket.version, { targetStatus: 'RESOLVED', resolution: RESOLUTION });
-    await agents.deactivateAgent(s.admin.actor, s.agent.agent.id);
+    const group = await fx.group();
+    const customer = await fx.customer();
+    const admin = await fx.admin();
+    const done = await worker(group);
+    const ticket = await tickets.create(admin.actor, { subject: 'Finished work', description: 'd', customerId: customer.id, groupId: group.id, assignedAgentId: done.agent!.id });
+    const started = await tickets.changeStatus(admin.actor, ticket.id, ticket.version, { targetStatus: 'IN_PROGRESS' });
+    await tickets.changeStatus(admin.actor, started.id, started.version, { targetStatus: 'RESOLVED', resolution: RESOLUTION });
+    await agents.deactivateAgent(admin.actor, done.agent!.id);
   });
 
   it('refuses to remove a member with active tickets in that group', async () => {
@@ -399,18 +410,18 @@ describe('structural guards', () => {
       const group = await fx.group();
       const customer = await fx.customer();
       const admin = await fx.admin();
-      const agent = await fx.agent([group]);
+      const target = await worker(group);
       const ticket = await tickets.create(admin.actor, { subject: 'Race condition', description: 'd', customerId: customer.id, groupId: group.id });
 
       const results = await Promise.allSettled([
-        tickets.assign(admin.actor, ticket.id, ticket.version, { assignedAgentId: agent.agent.id }),
-        agents.deactivateAgent(admin.actor, agent.agent.id),
+        tickets.assign(admin.actor, ticket.id, ticket.version, { assignedAgentId: target.agent!.id }),
+        agents.deactivateAgent(admin.actor, target.agent!.id),
       ]);
       expect(results.filter((r) => r.status === 'fulfilled'), `iteration ${i}`).toHaveLength(1);
 
       const [t, a] = await Promise.all([
         prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } }),
-        prisma.agent.findUniqueOrThrow({ where: { id: agent.agent.id } }),
+        prisma.agent.findUniqueOrThrow({ where: { id: target.agent!.id } }),
       ]);
       expect(t.assignedAgentId !== null && !a.isActive, `iteration ${i}: active ticket on inactive agent`).toBe(false);
     }

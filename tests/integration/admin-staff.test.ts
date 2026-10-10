@@ -233,17 +233,34 @@ describe('agents and statuses', () => {
     expect(errorFields(again)).toContain('user');
   });
 
-  it('shows why an agent with active tickets cannot be deactivated', async () => {
+  it('shows why a working profile with active tickets cannot be deactivated', async () => {
     const g = await fx.group();
     const customer = await fx.customer();
-    const worker = await fx.agent([g]);
-    await tickets.create(admin.actor, { subject: 'Agent is busy', description: 'd', customerId: customer.id, groupId: g.id, assignedAgentId: worker.agent.id });
+    const worker = await fx.admin({ withAgentIn: [g] }); // only profiles of ADMIN accounts can be switched off on their own
+    sessionUserIds.push(worker.user.id);
+    await tickets.create(admin.actor, { subject: 'Agent is busy', description: 'd', customerId: customer.id, groupId: g.id, assignedAgentId: worker.agent!.id });
     const s = await signIn(app, admin.user.normalizedEmail);
-    const params = (await s.get(`${API}/Agent/records/${worker.agent.id}/show`)).body.record.params as Record<string, unknown>;
-    const res = await s.post(`${API}/Agent/records/${worker.agent.id}/edit`, { ...params, isActive: false });
+    const params = (await s.get(`${API}/Agent/records/${worker.agent!.id}/show`)).body.record.params as Record<string, unknown>;
+    const res = await s.post(`${API}/Agent/records/${worker.agent!.id}/edit`, { ...params, isActive: false });
     expect(res.body.notice.type).toBe('error');
     expect(Object.keys(res.body.record.errors).length).toBeGreaterThan(0);
-    expect((await prisma.agent.findUniqueOrThrow({ where: { id: worker.agent.id } })).isActive).toBe(true);
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: worker.agent!.id } })).isActive).toBe(true);
+  });
+
+  it('does not let a profile edit strip an AGENT account of its profile, or your own profile be switched off', async () => {
+    const s = await signIn(app, admin.user.normalizedEmail);
+    const params = (await s.get(`${API}/Agent/records/${agent.agent.id}/show`)).body.record.params as Record<string, unknown>;
+    const res = await s.post(`${API}/Agent/records/${agent.agent.id}/edit`, { ...params, isActive: false });
+    expect(errorFields(res)).toContain('isActive');
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: agent.agent.id } })).isActive).toBe(true);
+
+    const self = await fx.admin({ withAgentIn: [group] });
+    sessionUserIds.push(self.user.id);
+    const mine = await signIn(app, self.user.normalizedEmail);
+    const own = (await mine.get(`${API}/Agent/records/${self.agent!.id}/show`)).body.record.params as Record<string, unknown>;
+    const denied = await mine.post(`${API}/Agent/records/${self.agent!.id}/edit`, { ...own, isActive: false });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe('self_change');
   });
 
   it('edits status presentation, never its code, and offers no way to add statuses', async () => {

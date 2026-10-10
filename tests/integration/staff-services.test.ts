@@ -238,14 +238,42 @@ describe('support profiles', () => {
     expect((await failure(agents.createProfile(admin.actor, { userId: boss.id }))).details).toHaveProperty('userId');
   });
 
-  it('activates an agent only while the account is active, and renames', async () => {
-    const user = await created({ role: 'AGENT' });
-    const profile = await prisma.agent.findUniqueOrThrow({ where: { userId: user.id } });
+  it('renames, and switches a working ADMIN profile off and on', async () => {
+    const boss = await created({ role: 'ADMIN' });
+    const profile = await agents.createProfile(admin.actor, { userId: boss.id });
     await agents.update(admin.actor, profile.id, { isActive: false, displayName: 'Renamed Agent' });
     expect(await prisma.agent.findUniqueOrThrow({ where: { id: profile.id } })).toMatchObject({ isActive: false, displayName: 'Renamed Agent' });
+    await agents.activateAgent(admin.actor, profile.id);
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: profile.id } })).isActive).toBe(true);
+  });
 
-    await users.update(admin.actor, user.id, { isActive: false });
+  it('activates a profile only while the account is active', async () => {
+    const boss = await created({ role: 'ADMIN' });
+    const profile = await agents.createProfile(admin.actor, { userId: boss.id });
+    await agents.deactivateAgent(admin.actor, profile.id);
+    await users.update(admin.actor, boss.id, { isActive: false }); // other administrators exist, so this one is not the last
     expect((await failure(agents.activateAgent(admin.actor, profile.id))).details).toHaveProperty('isActive');
+  });
+
+  it('never leaves an AGENT account without an active profile', async () => {
+    const user = await created({ role: 'AGENT' });
+    const profile = await prisma.agent.findUniqueOrThrow({ where: { userId: user.id } });
+    expect((await failure(agents.deactivateAgent(admin.actor, profile.id))).details).toHaveProperty('isActive');
+    expect((await failure(agents.update(admin.actor, profile.id, { isActive: false }))).details).toHaveProperty('isActive');
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: profile.id } })).isActive).toBe(true);
+
+    // the supported way is deactivating the account, which also signs the person out
+    const off = await users.update(admin.actor, user.id, { isActive: false });
+    expect(off.sessionVersion).toBe(user.sessionVersion + 1);
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: profile.id } })).isActive).toBe(false);
+  });
+
+  it('cannot switch off your own support profile', async () => {
+    const worker = await fx.admin({ withAgentIn: [] });
+    const err = await failure(agents.deactivateAgent(worker.actor, worker.agent!.id));
+    expect(err.code).toBe('self_change');
+    expect((await failure(agents.update(worker.actor, worker.agent!.id, { isActive: false }))).code).toBe('self_change');
+    expect((await prisma.agent.findUniqueOrThrow({ where: { id: worker.agent!.id } })).isActive).toBe(true);
   });
 
   it('is for administrators only', async () => {

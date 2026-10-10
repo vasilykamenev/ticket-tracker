@@ -1,14 +1,10 @@
 import type { Agent, PrismaClient } from '@prisma/client';
 import { lockAgent, type Tx } from '../db.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
-import { type Actor, isAdmin } from '../../policies/ticket-policy.js';
+import { type Actor, requireAdmin } from '../../policies/ticket-policy.js';
 import { parseInput } from '../tickets/schemas.js';
 import { ACTIVE_STATUSES } from '../tickets/workflow.js';
 import { createAgentProfileSchema, updateAgentSchema } from './schemas.js';
-
-function requireAdmin(actor: Actor): void {
-  if (!isAdmin(actor)) throw new ForbiddenError('admin_only', 'Only an administrator may do this');
-}
 
 /**
  * Deactivates an agent profile unless it still holds active tickets (NEW, IN_PROGRESS,
@@ -24,10 +20,25 @@ export async function deactivateAgentInTx(tx: Tx, agentId: string): Promise<void
 export class AgentService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  /** Refused while the agent holds active tickets; the agent loses access on the next request. */
+  /**
+   * Takes an agent out of work: they can no longer be assigned tickets. Refused while the agent holds
+   * active tickets, for your own profile, and for an AGENT account: an AGENT must always have an active
+   * profile (requirements section 5), so that account is deactivated through the user instead, which
+   * also signs the person out. In practice this is for ADMINs who work tickets and stop doing so.
+   */
   async deactivateAgent(actor: Actor, agentId: string): Promise<void> {
     requireAdmin(actor);
-    await this.prisma.$transaction((tx) => deactivateAgentInTx(tx, agentId));
+    await this.prisma.$transaction(async (tx) => {
+      const agent = await tx.agent.findUnique({ where: { id: agentId }, include: { user: { select: { role: true } } } });
+      if (!agent) throw new NotFoundError('agent');
+      if (agent.userId === actor.userId) throw new ForbiddenError('self_change', 'You cannot deactivate your own support profile');
+      if (agent.user.role === 'AGENT') {
+        throw new ValidationError('validation', 'Invalid input', {
+          isActive: 'an AGENT account always has an active profile; deactivate the account instead',
+        });
+      }
+      await deactivateAgentInTx(tx, agentId);
+    });
   }
 
   /** An agent can only work while their account is active. */
