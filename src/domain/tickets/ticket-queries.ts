@@ -110,8 +110,9 @@ export class TicketQueries {
 
     const statusRows = await this.prisma.ticketStatus.findMany({ where: { code: { in: [...STATUS_CODES] } } });
     const names = new Map(statusRows.map((s) => [s.code, s.name]));
+    const offered = new Set(statusRows.filter((s) => s.isActive).map((s) => s.code));
 
-    const targets = allowedTargets(code, isAdmin(actor)).map((to) => {
+    const targets = allowedTargets(code, isAdmin(actor)).filter((to) => offered.has(to)).map((to) => {
       const rule = findTransition(code, to)!;
       return {
         code: to,

@@ -76,3 +76,26 @@ Customers: any staff member creates; only ADMIN edits/deactivates (the `edit` ac
 - **Labels and help text** come from `field-catalog.ts`. AdminJS `PropertyOptions` has no `label`: labels are generated as locale translations (`catalogTranslations()`), help text goes in `description`.
 - **Components load from `dist/`** when it exists (they import each other with `.js` specifiers). For `npm run dev` run `npm run build` once, or `npm run build:watch` alongside, and delete `.adminjs/` after changing a component (D-005).
 - **UI language is English** (requirements are English; UNRESOLVED is "Unresolved" there). A Russian UI would be a locale in `field-catalog.ts` plus translations of the component strings. Open question for the product owner.
+
+## D-012 Staff, groups and statuses (stage 6)
+All writes go through `UserService`, `AgentService`, `GroupService` and `StatusService`, which are ADMIN-only; the AdminJS forms only expose what may be edited.
+
+**Accounts**
+- Role and password never travel through the profile form: `UserService.update` accepts only name, email and active state (strict schema), and the form rejects a changed role or a password with a pointer to the right action. Roles change with **Change role**, passwords with **Set password**.
+- Role change, password change and activation/deactivation bump `sessionVersion`, so the person is signed out on the next request (tested end to end over HTTP).
+- Nobody changes their own role or deactivates themselves (no self-escalation, no self-lockout). The last active ADMIN can be neither demoted nor deactivated; the check runs under `SELECT ... FOR UPDATE` on all active admins, because without the lock two admins demoting each other at once both succeed and leave none (the test repeats the race 12 times and fails without the lock).
+- An AGENT always has an active support profile (created with the account or on demotion). Deactivating the account deactivates the profile, which is refused while it holds active tickets; reactivating an AGENT account reactivates the profile. A rename propagates to the profile name. An ADMIN gets a profile through the Agent resource ("create profile"), which is what makes them assignable.
+- A profile cannot be switched off on its own if it belongs to an AGENT account (an AGENT must always have an active profile, requirements section 5: deactivate the account instead, which also signs the person out) or to the caller (no self-lockout through the Agent resource). That leaves ADMIN accounts that work tickets and stop doing so. Found by code review of stage 6.
+- Passwords: 12-256 characters, length only (no composition rules), Argon2id. There is no self-service password change yet.
+- Created and updated rows are redacted like reads, so a new account never echoes its hash.
+
+**Groups**: the code is immutable and validated (`[A-Z][A-Z0-9_]{1,39}`); deactivation is refused while the group has active tickets; only active agents join active groups; removing a member is refused while they hold active tickets in the group. An AGENT can read the member list of their own group (names only); ADMIN gets add/remove and the candidate list.
+
+**Statuses**: only name, color, order and active flag change; the code is fixed. NEW can never be deactivated and a status that tickets use cannot be. A deactivated status is no longer offered by the forms and is refused as a transition target (`FOR SHARE` on the target, `FOR UPDATE` on deactivation, same pattern as agents). New statuses need a migration and workflow tests; the resource has no "create".
+
+**Forms**: `ModeField` (formerly ReadOnlyWhenEditing) renders per mode from `property.custom.mode`: read-only on edit, create-only, or edit-only, because AdminJS shares one visibility key between new and edit.
+
+**Testing note**: the last-admin tests switch other active admins off for the duration of the test and always restore them. Run integration tests against a throwaway database, not one with real accounts.
+
+## D-013 Shared guards
+`requireAdmin(actor)` lives in `src/policies/ticket-policy.ts` and is the only way services refuse non-administrators; `isUniqueViolation` (P2002) and `isRecordNotFound` (P2025) live in `src/domain/db.ts`. Do not copy them into services.

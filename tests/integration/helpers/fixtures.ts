@@ -91,6 +91,20 @@ export class Fixtures {
     return customer;
   }
 
+  /** For rows created by the code under test (not by this class) that must still be cleaned up. */
+  trackUser(id: string): void {
+    this.userIds.push(id);
+  }
+
+  trackGroup(id: string): void {
+    this.groupIds.push(id);
+  }
+
+  /** A unique email for tests that create accounts through a service. */
+  email(prefix: string): string {
+    return `${this.next(prefix)}@example.test`;
+  }
+
   async cleanup(): Promise<void> {
     const tickets = await this.prisma.ticket.findMany({
       where: { OR: [{ groupId: { in: this.groupIds } }, { customerId: { in: this.customerIds } }] },

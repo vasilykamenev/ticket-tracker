@@ -128,13 +128,16 @@ export class GuardedResource extends Resource {
   override async create(params: Params, context?: ActionContext): Promise<Row> {
     const actor = actorFromContext(context);
     if (!this.guard.create) return readOnly();
-    return this.prepareReturnValues(await this.mapErrors(() => this.guard.create!(actor, params)));
+    const row = await this.mapErrors(() => this.guard.create!(actor, params));
+    // Created rows pass through the same redaction as reads: a new user must not echo its password hash.
+    return this.prepareReturnValues(this.guard.redact ? this.guard.redact(actor, row) : row);
   }
 
   override async update(id: string | number, params: Params = {}, context?: ActionContext): Promise<Row> {
     const actor = actorFromContext(context);
     if (!this.guard.update) return readOnly();
-    return this.prepareReturnValues(await this.mapErrors(() => this.guard.update!(actor, String(id), params)));
+    const row = await this.mapErrors(() => this.guard.update!(actor, String(id), params));
+    return this.prepareReturnValues(this.guard.redact ? this.guard.redact(actor, row) : row);
   }
 
   override async delete(): Promise<void> {

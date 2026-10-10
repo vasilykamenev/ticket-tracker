@@ -47,28 +47,36 @@ export const FIELD_CATALOG: Catalog = {
     code: { label: 'Code' },
     name: { label: 'Name' },
     description: { label: 'Description' },
-    isActive: { label: 'Active' },
+    isActive: { label: 'Active', help: 'A group with active tickets cannot be deactivated.' },
+    members: { label: 'Members', help: 'Agents who work the tickets of this group.' },
   },
   Agent: {
     displayName: { label: 'Name' },
-    userId: { label: 'User' },
-    isActive: { label: 'Active' },
+    user: { label: 'Account', help: 'The staff account this support profile belongs to.' },
+    isActive: { label: 'Active', help: 'An agent with active tickets cannot be deactivated.' },
   },
   TicketStatus: {
     code: { label: 'Code' },
     name: { label: 'Name' },
-    color: { label: 'Color' },
-    sortOrder: { label: 'Order' },
-    isActive: { label: 'Active' },
+    color: { label: 'Color', help: 'A color like #3b82f6.' },
+    sortOrder: { label: 'Order', help: 'Lower numbers come first.' },
+    isActive: { label: 'Active', help: 'NEW and statuses that tickets still use cannot be deactivated.' },
   },
   User: {
     displayName: { label: 'Name' },
-    normalizedEmail: { label: 'Email' },
-    role: { label: 'Role' },
-    isActive: { label: 'Active' },
+    normalizedEmail: { label: 'Email', help: 'Stored in lower case; must be unique.' },
+    role: { label: 'Role', help: 'Changed with the Change role action.' },
+    isActive: { label: 'Active', help: 'Deactivating signs the person out. The last active administrator cannot be deactivated.' },
+    password: { label: 'Password', help: 'At least 12 characters. Changed later with the Set password action.' },
     createdAt: { label: 'Created at' },
     updatedAt: { label: 'Updated at' },
   },
+};
+
+/** Labels of the custom record actions, by resource. */
+export const ACTION_LABELS: Record<string, Record<string, string>> = {
+  Ticket: { changeStatus: 'Change status', assignTicket: 'Assign' },
+  User: { changeRole: 'Change role', setPassword: 'Set password' },
 };
 
 /** Help text for the properties of one resource, ready to merge into AdminJS property options. */
@@ -87,10 +95,13 @@ export function labelled(resource: string, properties: Record<string, PropertyOp
  * AdminJS takes property labels from translations (`resources.<Resource>.properties.<field>`), not from
  * property options, so the catalog also produces that structure.
  */
-export function catalogTranslations(): { resources: Record<string, { properties: Record<string, string> }> } {
-  const resources: Record<string, { properties: Record<string, string> }> = {};
+export function catalogTranslations(): { resources: Record<string, { properties: Record<string, string>; actions?: Record<string, string> }> } {
+  const resources: Record<string, { properties: Record<string, string>; actions?: Record<string, string> }> = {};
   for (const [resource, fields] of Object.entries(FIELD_CATALOG)) {
-    resources[resource] = { properties: Object.fromEntries(Object.entries(fields).map(([name, def]) => [name, def.label])) };
+    resources[resource] = {
+      properties: Object.fromEntries(Object.entries(fields).map(([name, def]) => [name, def.label])),
+      ...(ACTION_LABELS[resource] ? { actions: ACTION_LABELS[resource] } : {}),
+    };
   }
   return { resources };
 }

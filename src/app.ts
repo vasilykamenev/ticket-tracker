@@ -20,6 +20,11 @@ import { customerResource } from './admin/resources/customer.js';
 import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
+import { GroupQueries } from './domain/groups/group-queries.js';
+import { GroupService } from './domain/groups/group-service.js';
+import { StatusService } from './domain/statuses/status-service.js';
+import { AgentService } from './domain/users/agent-service.js';
+import { UserService } from './domain/users/user-service.js';
 import { TicketQueries } from './domain/tickets/ticket-queries.js';
 import { TicketService } from './domain/tickets/ticket-service.js';
 import { Components } from './admin/component-loader.js';
@@ -40,6 +45,11 @@ function buildAdmin(prisma: PrismaClient): AdminJS {
   const tickets = new TicketService(prisma);
   const customers = new CustomerService(prisma);
   const queries = new TicketQueries(prisma);
+  const groups = new GroupService(prisma);
+  const groupQueries = new GroupQueries(prisma);
+  const agents = new AgentService(prisma);
+  const statuses = new StatusService(prisma);
+  const users = new UserService(prisma);
   return new AdminJS({
     rootPath: '/admin',
     logoutPath: '/auth/logout',
@@ -53,24 +63,17 @@ function buildAdmin(prisma: PrismaClient): AdminJS {
     },
     locale: {
       language: 'en',
-      translations: {
-        en: {
-          resources: {
-            ...catalogTranslations().resources,
-            Ticket: { ...catalogTranslations().resources.Ticket, actions: { changeStatus: 'Change status', assignTicket: 'Assign' } },
-          },
-        },
-      },
+      translations: { en: catalogTranslations() },
     },
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).
     resources: [
       ticketResource(prisma, tickets, queries),
       customerResource(prisma, customers, queries),
-      groupResource(prisma),
-      agentResource(prisma),
-      statusResource(prisma),
-      userResource(prisma),
+      groupResource(prisma, groups, groupQueries),
+      agentResource(prisma, agents),
+      statusResource(prisma, statuses),
+      userResource(prisma, users),
     ],
   });
 }

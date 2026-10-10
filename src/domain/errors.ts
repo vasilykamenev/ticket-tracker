@@ -26,7 +26,7 @@ export class ForbiddenError extends DomainError {
 
 /** Version mismatch (409, user should refresh) or a state that forbids the operation. */
 export class ConflictError extends DomainError {
-  constructor(code: 'version_conflict' | 'ticket_frozen' | 'has_active_tickets', message: string) {
+  constructor(code: 'version_conflict' | 'ticket_frozen' | 'has_active_tickets' | 'last_admin' | 'status_in_use', message: string) {
     super(code, 409, message);
   }
 }

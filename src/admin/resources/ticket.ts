@@ -1,4 +1,4 @@
-import type { ActionContext, ActionRequest, ResourceWithOptions } from 'adminjs';
+import type { ResourceWithOptions } from 'adminjs';
 import { getModelByName } from '@adminjs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { loadScope } from '../../domain/db.js';
@@ -11,6 +11,7 @@ import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
 import { NO_ACTIONS, onlyIn } from './helpers.js';
+import { dataAction, formAction, pick, query, recordId } from './record-actions.js';
 
 /** Form fields that the ordinary edit form must never change; changing them is rejected, not ignored. */
 const PROTECTED_FIELDS: Record<string, string> = {
@@ -25,18 +26,6 @@ const PROTECTED_FIELDS: Record<string, string> = {
 };
 
 const blank = (v: unknown): string | null => (v === undefined || v === null || v === '' ? null : String(v));
-
-function pick(params: Record<string, unknown>, keys: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of keys) if (params[key] !== undefined) out[key] = params[key];
-  return out;
-}
-
-const recordId = (request: ActionRequest) => String(request.params.recordId);
-const query = (request: ActionRequest, key: string): string | undefined => {
-  const value = request.query?.[key];
-  return typeof value === 'string' && value !== '' ? value : undefined;
-};
 
 export function ticketResource(prisma: PrismaClient, tickets: TicketService, queries: TicketQueries): ResourceWithOptions {
   const resource = new GuardedResource(
@@ -69,31 +58,6 @@ export function ticketResource(prisma: PrismaClient, tickets: TicketService, que
     },
   );
 
-  // AdminJS requires every record action to return the record (RecordJSON); our own data rides along.
-  const withRecord = (context: ActionContext, data: object = {}) => ({ record: context.record!.toJSON(context.currentAdmin), ...data });
-
-  /** AdminJS opens the action page with a GET that must return the record; the form then POSTs. */
-  const formAction = (
-    component: string,
-    apply: (context: ActionContext, request: ActionRequest, payload: Record<string, unknown>) => Promise<unknown>,
-  ) => ({
-    actionType: 'record' as const,
-    component,
-    handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
-      if (request.method === 'get') return withRecord(context);
-      await apply(context, request, (request.payload ?? {}) as Record<string, unknown>);
-      return withRecord(context, { ok: true });
-    },
-  });
-
-  /** Hidden JSON endpoint used by the custom components; scoped by the service like everything else. */
-  const dataAction = (load: (context: ActionContext, request: ActionRequest) => Promise<object>) => ({
-    actionType: 'record' as const,
-    isVisible: false,
-    component: false as const,
-    handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => withRecord(context, await load(context, request)),
-  });
-
   return {
     resource,
     options: {
@@ -112,9 +76,9 @@ export function ticketResource(prisma: PrismaClient, tickets: TicketService, que
         description: { type: 'textarea', isVisible: onlyIn('show', 'edit') },
         priority: { isVisible: onlyIn('list', 'filter', 'show', 'edit') },
         // "edit" covers both the new and the edit form; on an existing ticket these render read-only.
-        customer: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ReadOnlyWhenEditing } },
-        group: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ReadOnlyWhenEditing } },
-        assignedAgent: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ReadOnlyWhenEditing } },
+        customer: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'The customer cannot be changed after creation.' } },
+        group: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
+        assignedAgent: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
         status: { isVisible: onlyIn('list', 'filter', 'show') },
         resolution: { type: 'textarea', isVisible: onlyIn('show') },
         unresolvedReason: { type: 'textarea', isVisible: onlyIn('show') },
