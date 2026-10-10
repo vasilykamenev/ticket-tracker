@@ -5,7 +5,7 @@ Tick each item with evidence (test name, URL, screenshot) as stages complete.
 - [~] 1. Package compatibility prototype; versions pinned (verified: build, list+FK lookup+save, custom component in production bundle; NOT verified: run inside Docker image)
 - [ ] 2. Supabase `support` schema, migrations, runtime role, Session table
 - [x] 3. Auth: login/logout, sessions, CSRF, rate limit; rejected-request tests (tests/unit/auth.test.ts, tests/integration/auth.test.ts; verified in Chrome: AdminJS 'Create' sends X-CSRF-Token via XHR)
-- [ ] 4. Policies and domain services: workflow, assignment, optimistic locking
+- [x] 4. Policies and domain services: workflow, assignment, optimistic locking (tests/unit/workflow.test.ts, tests/integration/ticket-service.test.ts; mutation-checked: scope filter, version lock, row locks)
 - [ ] 5. Ticket and Customer resources: lists, search, filters, no generic-action bypass
 - [ ] 6. Users, Agents, Groups, memberships, Status administration
 - [ ] 7. CommentsInline create/edit within Ticket view
