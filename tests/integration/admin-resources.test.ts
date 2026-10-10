@@ -311,14 +311,18 @@ describe('reference data', () => {
     }
   });
 
-  it('exposes no write access to staff, groups, agents or statuses', async () => {
-    const s = await signIn(app, admin.user.normalizedEmail);
+  it('gives an AGENT no write access to staff, groups, agents or statuses, and nobody can add a status', async () => {
+    const a = await signIn(app, agentA.user.normalizedEmail);
     for (const resource of ['User', 'Agent', 'SupportGroup', 'TicketStatus']) {
-      const res = await s.post(`${API}/${resource}/actions/new`, { displayName: 'x', name: 'x', code: 'X' });
+      const res = await a.post(`${API}/${resource}/actions/new`, { displayName: 'x', name: 'x', code: 'X' });
       expect(refusal(res), resource).toBe('ForbiddenError');
     }
     expect(await prisma.supportGroup.count({ where: { code: 'X' } })).toBe(0);
+
+    const s = await signIn(app, admin.user.normalizedEmail);
+    expect(refusal(await s.post(`${API}/TicketStatus/actions/new`, { code: 'X', name: 'x' }))).toBe('ForbiddenError'); // new codes need a migration
   });
+
 });
 
 const fxCustomerIds: string[] = [];
