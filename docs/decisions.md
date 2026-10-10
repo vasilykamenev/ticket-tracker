@@ -24,3 +24,16 @@ No Docker on the dev machine, so `npm run dev:db` starts PostgreSQL via `embedde
 
 ## D-005 AdminJS bundling at startup
 In production AdminJS bundles custom components into `.adminjs/` on startup (~30-60 s here). The container's runtime user needs write access to it. Healthcheck/readiness must tolerate the delay.
+
+## D-006 One session, own login controller (stage 3)
+`@adminjs/express` `buildRouter` reads `req.session.adminUser` as `currentAdmin`, so the app uses its own `express-session` + `connect-pg-simple` (table `support."Session"`, owned by Prisma) and `buildRouter`, not `buildAuthenticatedRouter` (which would create a second session). `requireUser` reloads the user from the DB on every request and checks `isActive`, an active Agent profile for AGENT, `sessionVersion`, and the 8 h absolute lifetime; idle timeout (30 min) is the sliding cookie/store expiry (`rolling`).
+
+Middleware order (matters): health -> session -> `/auth` form parser (4 KiB) -> CSRF -> `/auth` routes -> `requireUser` -> AdminJS router. `buildRouter` brings `express-formidable`, which writes uploads to disk, so CSRF must run before it and uploads (stage 8) need their own route mounted before the AdminJS router.
+
+## D-007 CSRF
+Synchronizer token in the session + mandatory `Origin` check (missing Origin is rejected on unsafe methods). Token is read from `X-CSRF-Token` or a parsed `_csrf` form field. The AdminJS client gets the header from `public/csrf-client.js` (patches XHR and fetch, same-origin only, token from `GET /auth/csrf`). Logout is POST; the link AdminJS renders (GET) shows a confirmation form.
+
+## D-008 Known limitations
+- Login rate limits are in-memory: correct for a single replica only; multiple replicas need a shared store.
+- Argon2id parameters: m=19456 KiB, t=2, p=1 (OWASP minimum); revisit against the production host's CPU.
+- The model/resource exposure in AdminJS is still unrestricted for any signed-in user; RBAC is stages 4-6.
