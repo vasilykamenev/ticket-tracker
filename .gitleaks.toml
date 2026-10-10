@@ -1,0 +1,14 @@
+title = "support-ticket-tracker gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and example values"
+paths = [
+  '''\.env\.example$''',
+]
+regexes = [
+  '''CHANGE_ME''',
+  '''example\.test''',
+]

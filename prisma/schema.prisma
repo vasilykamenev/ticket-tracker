@@ -1,0 +1,226 @@
+// Data model per docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md, section 5.
+// NOTE: multi-schema syntax depends on the Prisma major version chosen in stage 1
+// (package compatibility). Adjust datasource/generator config to the pinned version.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["support"]
+}
+
+enum Role {
+  ADMIN
+  AGENT
+
+  @@schema("support")
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@schema("support")
+}
+
+enum AttachmentState {
+  PENDING
+  READY
+  FAILED
+  DELETING
+
+  @@schema("support")
+}
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  normalizedEmail String   @unique
+  displayName     String
+  passwordHash    String
+  role            Role
+  isActive        Boolean  @default(true)
+  sessionVersion  Int      @default(1)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  agent            Agent?
+  createdTickets   Ticket[]        @relation("TicketCreatedBy")
+  comments         Comment[]
+  attachments      Attachment[]
+  historyEntries   TicketHistory[]
+
+  @@schema("support")
+}
+
+model Agent {
+  id          String  @id @default(uuid()) @db.Uuid
+  userId      String  @unique @db.Uuid
+  displayName String
+  isActive    Boolean @default(true)
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  groups    AgentGroup[]
+  tickets   Ticket[]
+
+  @@schema("support")
+}
+
+model Customer {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  emailNormalized String   @unique
+  company         String?
+  phone           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  tickets Ticket[]
+
+  @@schema("support")
+}
+
+model SupportGroup {
+  id          String  @id @default(uuid()) @db.Uuid
+  code        String  @unique
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  members AgentGroup[]
+  tickets Ticket[]
+
+  @@schema("support")
+}
+
+model AgentGroup {
+  id      String @id @default(uuid()) @db.Uuid
+  agentId String @db.Uuid
+  groupId String @db.Uuid
+
+  agent Agent        @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  group SupportGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([agentId, groupId])
+  @@index([groupId])
+  @@schema("support")
+}
+
+model TicketStatus {
+  id        String  @id @default(uuid()) @db.Uuid
+  code      String  @unique
+  name      String
+  color     String
+  sortOrder Int
+  isActive  Boolean @default(true)
+
+  tickets Ticket[]
+
+  @@schema("support")
+}
+
+model Ticket {
+  id               String    @id @default(uuid()) @db.Uuid
+  number           Int       @unique @default(autoincrement())
+  subject          String
+  description      String
+  customerId       String    @db.Uuid
+  groupId          String    @db.Uuid
+  assignedAgentId  String?   @db.Uuid
+  statusId         String    @db.Uuid
+  priority         Priority  @default(NORMAL)
+  resolution       String?
+  unresolvedReason String?
+  resolvedAt       DateTime? @db.Timestamptz(6)
+  unresolvedAt     DateTime? @db.Timestamptz(6)
+  closedAt         DateTime? @db.Timestamptz(6)
+  createdByUserId  String    @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  group         SupportGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  assignedAgent Agent?       @relation(fields: [assignedAgentId], references: [id], onDelete: Restrict)
+  status        TicketStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  createdBy     User         @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  comments Comment[]
+  history  TicketHistory[]
+
+  @@index([groupId, statusId, updatedAt])
+  @@index([assignedAgentId, statusId, updatedAt])
+  @@index([customerId, createdAt])
+  @@schema("support")
+}
+
+model Comment {
+  id           String   @id @default(uuid()) @db.Uuid
+  ticketId     String   @db.Uuid
+  authorUserId String   @db.Uuid
+  body         String
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  author      User         @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  attachments Attachment[]
+
+  @@index([ticketId, createdAt])
+  @@schema("support")
+}
+
+model Attachment {
+  id              String          @id @default(uuid()) @db.Uuid
+  commentId       String          @db.Uuid
+  bucket          String
+  objectKey       String          @unique
+  originalName    String
+  contentType     String
+  sizeBytes       Int
+  sha256          String
+  state           AttachmentState @default(PENDING)
+  createdByUserId String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Restrict)
+  createdBy User    @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([commentId])
+  @@schema("support")
+}
+
+model TicketHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  ticketId    String   @db.Uuid
+  actorUserId String   @db.Uuid
+  kind        String
+  before      Json?
+  after       Json?
+  reason      String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  actor  User   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, createdAt])
+  @@schema("support")
+}
+
+// connect-pg-simple compatible. Not exposed through AdminJS.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@schema("support")
+}
