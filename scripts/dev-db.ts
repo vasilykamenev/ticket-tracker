@@ -9,7 +9,7 @@ const pg = new EmbeddedPostgres({
   password: 'postgres',
   port: 15432,
   persistent: true,
-  initdbFlags: ['--encoding=UTF8', '--locale=C'],
+  initdbFlags: ['--encoding=UTF8', '--locale-provider=icu', '--icu-locale=en-US', '--locale=C'],
 });
 
 if (!existsSync(`${dataDir}/PG_VERSION`)) await pg.initialise();
