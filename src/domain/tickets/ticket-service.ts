@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, Ticket, TicketStatus } from '@prisma/client';
 import { z } from 'zod';
-import { lockAgent, lockGroup, loadScope, type Tx } from '../db.js';
+import { lockAgent, lockGroup, lockStatus, loadScope, type Tx } from '../db.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
 import {
@@ -182,6 +182,11 @@ export class TicketService {
 
     const outcome = applyOutcome(ticket, data.targetStatus, data, this.now());
     const statuses = await this.statusIds(tx);
+    // SHARE lock: deactivating a status takes an UPDATE lock and then counts tickets, so one of us waits.
+    const targetStatus = await lockStatus(tx, statuses[data.targetStatus], 'share');
+    if (!targetStatus?.isActive) {
+      throw new ValidationError('validation', 'Invalid input', { targetStatus: 'this status has been deactivated by an administrator' });
+    }
     const updated = await this.bump(tx, ticket, version, {
       status: { connect: { id: statuses[data.targetStatus] } },
       ...outcome,
