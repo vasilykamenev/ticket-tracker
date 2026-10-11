@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -27,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.2
           cache: npm
       - run: npm ci
       - run: npx prisma generate
@@ -104,7 +107,7 @@ jobs:
             -e S3_ENDPOINT=http://127.0.0.1:9 -e S3_REGION=us-east-1 -e S3_BUCKET=ci \
             -e S3_ACCESS_KEY_ID=ci -e S3_SECRET_ACCESS_KEY=ci-not-used \
             "$IMAGE"
-          for i in $(seq 1 60); do curl -fsS http://localhost:3000/health/ready >/dev/null && break; sleep 1; done
+          for _ in $(seq 1 60); do curl -fsS http://localhost:3000/health/ready >/dev/null && break; sleep 1; done
           curl -fsS http://localhost:3000/health/ready
 
       - name: Smoke test with both roles (ADMIN creates, AGENT works the ticket)
@@ -116,7 +119,7 @@ jobs:
 
       - name: The container reports healthy
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             status="$(docker inspect -f '{{.State.Health.Status}}' app)"
             [ "$status" = "healthy" ] && exit 0
             sleep 3
