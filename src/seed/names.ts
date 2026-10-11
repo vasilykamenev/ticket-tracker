@@ -68,6 +68,13 @@ export const RU_COMMENTS = [
   'Передано на вторую линию: код ошибки не описан в документации.',
 ] as const;
 
+/** The language-dependent text pools, so callers choose a language once instead of picking each pool by hand. */
+export const TEXTS = {
+  en: { areas: EN_AREAS, problems: EN_PROBLEMS, details: EN_DETAILS, comments: EN_COMMENTS },
+  ru: { areas: RU_AREAS, problems: RU_PROBLEMS, details: RU_DETAILS, comments: RU_COMMENTS },
+} as const;
+export const textsFor = (russian: boolean) => (russian ? TEXTS.ru : TEXTS.en);
+
 export const WAITING_REASONS = ['Waiting for the customer to send the log files', 'Asked the customer to confirm the account owner', 'Requested a screenshot of the error', 'Ждём ответ клиента с номером счёта', 'Запросили у клиента подробности по ошибке'] as const;
 export const REOPEN_REASONS = ['The customer replied: the problem is back', 'The fix did not hold after the next deployment', 'Клиент ответил, проблема повторилась', 'Нужны дополнительные проверки после обновления'] as const;
 export const RESOLUTIONS = [

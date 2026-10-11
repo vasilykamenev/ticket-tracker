@@ -1,16 +1,21 @@
 import { findTransition, isFrozen, isStatusCode } from '../domain/tickets/workflow.js';
-import { MAX_COMMENTS_PER_TICKET, SIZES, STATUS_COUNTS, type Snapshot } from './dataset.js';
+import { MAX_COMMENTS_PER_TICKET, SIZES, STATUS_COUNTS, TICKET_WINDOW_DAYS, type Snapshot } from './dataset.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+const DEMO_ADDRESS = /@example\.test$/;
 
 /** The part of the dataset the consistency checks need. A generated dataset and rows read from the database both fit. */
 export interface DatasetView {
-  users: Array<{ id: string; role: string }>;
-  agents: Array<{ id: string; userId: string }>;
+  users: Array<{ id: string; email: string; role: string }>;
+  agents: Array<{ id: string; userId: string; isActive?: boolean }>;
   groups: Array<{ id: string; name: string }>;
   memberships: Array<{ agentId: string; groupId: string }>;
-  customers: Array<{ id: string; name: string; phone: string | null; createdAt: Date }>;
+  customers: Array<{ id: string; name: string; email: string; phone: string | null; createdAt: Date }>;
   tickets: Array<{
     id: string;
     subject: string;
+    priority: string;
     customerId: string;
     groupId: string;
     assignedAgentId: string | null;
@@ -24,9 +29,17 @@ export interface DatasetView {
     createdAt: Date;
     updatedAt: Date;
   }>;
-  history: Array<{ ticketId: string; actorUserId: string; kind: string; before: Snapshot | null; after: Snapshot; reason: string | null; createdAt: Date }>;
-  comments: Array<{ ticketId: string; authorUserId: string; createdAt: Date; updatedAt: Date }>;
-  attachments: Array<{ commentId: string; state?: string }>;
+  history: Array<{
+    ticketId: string;
+    actorUserId: string;
+    kind: string;
+    before: Snapshot | null;
+    after: Snapshot;
+    reason: string | null;
+    createdAt: Date;
+  }>;
+  comments: Array<{ id: string; ticketId: string; authorUserId: string; createdAt: Date; updatedAt: Date }>;
+  attachments: Array<{ commentId: string; state?: string; createdAt?: Date }>;
 }
 
 export interface CheckResult {
@@ -74,7 +87,7 @@ function editDistance(a: string, b: string): number {
  * Checks the demo dataset against requirements section 13: volumes, memberships, assignees, that every ticket's
  * history is a chain of permitted transitions ending in its current state, and that dates and comments agree.
  */
-export function checkDataset(view: DatasetView): CheckResult {
+export function checkDataset(view: DatasetView, options: { referenceDate?: Date } = {}): CheckResult {
   const report = new Report();
   const stats: Record<string, number> = {};
   const expect = (what: string, actual: number, wanted: number) => {
@@ -95,6 +108,7 @@ export function checkDataset(view: DatasetView): CheckResult {
   expect('comments', view.comments.length, SIZES.comments);
   expect('attachments', view.attachments.length, SIZES.attachments);
   for (const u of view.users) {
+    if (!DEMO_ADDRESS.test(u.email)) report.add('accounts', `${u.email} is not an example.test address`);
     if (u.role === 'ADMIN' && agentUserIds.has(u.id)) report.add('accounts', `admin ${u.id} has an Agent profile`);
     if (u.role === 'AGENT' && !agentUserIds.has(u.id)) report.add('accounts', `agent account ${u.id} has no Agent profile`);
   }
@@ -104,6 +118,8 @@ export function checkDataset(view: DatasetView): CheckResult {
   for (const a of view.attachments) if (a.state !== undefined && a.state !== 'READY') report.add('attachments', `state ${a.state}`);
 
   // ---- memberships and references
+  for (const c of view.customers) if (!DEMO_ADDRESS.test(c.email)) report.add('customers', `${c.email} is not an example.test address`);
+  const inactiveAgents = new Set(view.agents.filter((a) => a.isActive === false).map((a) => a.id));
   const groupIds = new Set(view.groups.map((g) => g.id));
   const customerIds = new Set(view.customers.map((c) => c.id));
   const membersOf = new Map<string, Set<string>>();
@@ -125,6 +141,15 @@ export function checkDataset(view: DatasetView): CheckResult {
   const ticketIds = new Set(view.tickets.map((t) => t.id));
   for (const c of view.comments) if (!ticketIds.has(c.ticketId)) report.add('references', `comment of unknown ticket ${c.ticketId}`);
 
+  // The 90-day window is measured from the reference date; when it is not known (checking the database) the
+  // newest update stands in for it, with a day of slack.
+  const newest = view.tickets.reduce((latest, t) => Math.max(latest, t.updatedAt.getTime()), 0);
+  const reference = options.referenceDate?.getTime() ?? newest;
+  const slack = options.referenceDate ? 0 : DAY_MS;
+  const priorities = new Set(view.tickets.map((t) => t.priority));
+  stats['priorities in use'] = priorities.size;
+  for (const p of PRIORITIES) if (!priorities.has(p)) report.add('coverage', `no ticket has priority ${p}`);
+
   let unassignedNew = 0;
   let reopenedAndResolved = 0;
   for (const t of view.tickets) {
@@ -132,12 +157,19 @@ export function checkDataset(view: DatasetView): CheckResult {
     if (!customerIds.has(t.customerId)) report.add('references', `ticket ${t.id} of unknown customer`);
     customerFirstTicket.set(t.customerId, Math.min(customerFirstTicket.get(t.customerId) ?? Infinity, t.createdAt.getTime()));
 
+    if (t.createdAt.getTime() < reference - TICKET_WINDOW_DAYS * DAY_MS - slack) {
+      report.add('dates', `ticket ${t.id} was created more than ${TICKET_WINDOW_DAYS} days before the reference date`);
+    }
+    if (t.updatedAt.getTime() > reference + slack) report.add('dates', `ticket ${t.id} was updated after the reference date`);
+
     // Assignees: NEW may be unassigned; every other ticket has an assignee who is a member of its group.
     if (t.assignedAgentId === null) {
       if (t.status === 'NEW') unassignedNew++;
       else report.add('assignee', `ticket ${t.id} (${t.status}) has no assignee`);
     } else if (!membersOf.get(t.groupId)?.has(t.assignedAgentId)) {
       report.add('assignee', `ticket ${t.id} is assigned to an agent outside its group`);
+    } else if (inactiveAgents.has(t.assignedAgentId)) {
+      report.add('assignee', `ticket ${t.id} is assigned to an inactive agent`);
     }
 
     // Outcome fields.
@@ -172,8 +204,10 @@ export function checkDataset(view: DatasetView): CheckResult {
         else {
           if (rule.adminOnly && roleOf.get(e.actorUserId) !== 'ADMIN') report.add('workflow', `ticket ${t.id}: ${from} -> ${to} done by a non-admin`);
           if (rule.reason === 'required' && !e.reason) report.add('workflow', `ticket ${t.id}: ${from} -> ${to} has no reason`);
-          if (rule.resolution && !str(e.after, 'resolution')) report.add('workflow', `ticket ${t.id}: resolving without a resolution`);
-          if (rule.unresolvedReason && !str(e.after, 'unresolvedReason')) report.add('workflow', `ticket ${t.id}: unresolved without a reason`);
+          if (rule.resolution && !(str(e.after, 'resolution') && e.after.resolvedAt)) report.add('workflow', `ticket ${t.id}: resolved without a resolution and date`);
+          if (rule.unresolvedReason && !(str(e.after, 'unresolvedReason') && e.after.unresolvedAt)) {
+            report.add('workflow', `ticket ${t.id}: marked unresolved without a reason and date`);
+          }
         }
         statuses.push(to);
       } else if (e.kind === 'ASSIGNED') {
@@ -186,14 +220,18 @@ export function checkDataset(view: DatasetView): CheckResult {
     const last = events[events.length - 1]!;
     if (str(last.after, 'status') !== t.status) report.add('history', `ticket ${t.id}: history ends in ${str(last.after, 'status')}, the ticket is ${t.status}`);
     if ((last.after.assignedAgentId ?? null) !== t.assignedAgentId) report.add('history', `ticket ${t.id}: history ends with another assignee`);
-    if (str(last.after, 'resolution') !== t.resolution || str(last.after, 'unresolvedReason') !== t.unresolvedReason) report.add('history', `ticket ${t.id}: history ends with other outcome text`);
+    if (str(last.after, 'resolution') !== t.resolution || str(last.after, 'unresolvedReason') !== t.unresolvedReason) {
+      report.add('history', `ticket ${t.id}: history ends with other outcome text`);
+    }
     if (iso(last.after.resolvedAt) !== iso(t.resolvedAt) || iso(last.after.unresolvedAt) !== iso(t.unresolvedAt) || iso(last.after.closedAt) !== iso(t.closedAt)) {
       report.add('history', `ticket ${t.id}: history ends with other outcome dates`);
     }
     if (t.version !== events.length) report.add('history', `ticket ${t.id}: version ${t.version} but ${events.length} history entries`);
     if (last.createdAt.getTime() > t.updatedAt.getTime()) report.add('dates', `ticket ${t.id}: updatedAt is before its last history entry`);
     if (t.status === 'CLOSED' && !statuses.includes('RESOLVED')) report.add('workflow', `CLOSED ticket ${t.id} never passed RESOLVED`);
-    if (t.status === 'UNRESOLVED' && !statuses.some((s) => s === 'IN_PROGRESS' || s === 'WAITING_CUSTOMER')) report.add('workflow', `UNRESOLVED ticket ${t.id} never was in progress`);
+    if (t.status === 'UNRESOLVED' && !statuses.some((s) => s === 'IN_PROGRESS' || s === 'WAITING_CUSTOMER')) {
+      report.add('workflow', `UNRESOLVED ticket ${t.id} never was in progress`);
+    }
     const joined = statuses.join(',');
     if (/UNRESOLVED,IN_PROGRESS(,[A-Z_]+)*,RESOLVED/.test(joined)) reopenedAndResolved++;
 
@@ -246,6 +284,20 @@ export function checkDataset(view: DatasetView): CheckResult {
   if (similar === 0) report.add('coverage', 'no customers with similar names');
   for (const g of view.groups) {
     if (!view.tickets.some((t) => t.groupId === g.id)) report.add('coverage', `group ${g.name} has no tickets`);
+  }
+  const commentById = new Map(view.comments.map((c) => [c.id, c]));
+  const ticketById = new Map(view.tickets.map((t) => [t.id, t]));
+  for (const a of view.attachments) {
+    const comment = commentById.get(a.commentId);
+    if (!comment) {
+      report.add('references', `attachment of unknown comment ${a.commentId}`);
+      continue;
+    }
+    if (!a.createdAt) continue;
+    const ticket = ticketById.get(comment.ticketId);
+    if (a.createdAt.getTime() < comment.createdAt.getTime() || (ticket && a.createdAt.getTime() > ticket.updatedAt.getTime())) {
+      report.add('dates', `an attachment of ticket ${comment.ticketId} lies outside its comment..ticket updatedAt`);
+    }
   }
   const perComment = new Map<string, number>();
   for (const a of view.attachments) perComment.set(a.commentId, (perComment.get(a.commentId) ?? 0) + 1);

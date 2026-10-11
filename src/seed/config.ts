@@ -14,19 +14,21 @@ export class SeedGuardError extends Error {
 
 const appEnv = (env: SeedEnv) => env.APP_ENV ?? 'development';
 
-/** Demo data never goes into production. */
+/** Demo data goes into development or demo only; an unset APP_ENV means development, as everywhere in the application. */
 export function assertSeedAllowed(env: SeedEnv): void {
   const name = appEnv(env);
-  if (!['development', 'demo', 'test'].includes(name)) throw new SeedGuardError(`Refusing to seed demo data into APP_ENV=${name}. Use development or demo.`);
+  if (!['development', 'demo'].includes(name)) throw new SeedGuardError(`Refusing to seed demo data into APP_ENV=${name}. Use development or demo.`);
 }
 
 /**
- * Resetting deletes rows and objects, so it needs three things at once: an allowed environment, the explicit
- * ALLOW_DEMO_RESET=true, and the dataset name typed twice. A production environment is always refused.
+ * Resetting deletes rows and objects, so it needs four things at once: APP_ENV set explicitly to development or
+ * demo (an unset variable is not enough), ALLOW_DEMO_RESET=true, and the dataset name typed twice. A production
+ * environment is always refused.
  */
 export function assertResetAllowed(env: SeedEnv, args: { dataset?: string; confirm?: string }, dataset: string): void {
-  const name = appEnv(env);
+  const name = env.APP_ENV;
   if (name === 'production') throw new SeedGuardError('Refusing to reset the demo dataset in production.');
+  if (!name) throw new SeedGuardError('Set APP_ENV=development or APP_ENV=demo explicitly to allow a reset.');
   if (!['development', 'demo'].includes(name)) throw new SeedGuardError(`Refusing to reset in APP_ENV=${name}. Use development or demo.`);
   if (env.ALLOW_DEMO_RESET !== 'true') throw new SeedGuardError('Set ALLOW_DEMO_RESET=true to allow a reset.');
   if (args.dataset !== dataset) throw new SeedGuardError(`--dataset must be exactly "${dataset}".`);

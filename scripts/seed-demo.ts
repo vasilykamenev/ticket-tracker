@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
 import { SeedGuardError } from '../src/seed/config.js';
 import { openSeedStorage, parseSeedNumber, runCli } from '../src/seed/cli.js';
-import { seedDemo } from '../src/seed/run.js';
+import { seedDemo } from '../src/seed/seed.js';
 
 await runCli(async () => {
   const { values } = parseArgs({ options: { seed: { type: 'string' }, 'reference-date': { type: 'string' }, 'rotate-demo-passwords': { type: 'boolean' } } });

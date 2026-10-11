@@ -77,7 +77,10 @@ export function makeJpeg(rng: Rng, targetBytes: number): Buffer {
   }
   while (bitCount !== 0) put(1, 1); // pad the last byte with ones
 
-  const segment = (marker: number, payload: Buffer) => Buffer.concat([Buffer.from([0xff, marker]), Buffer.from([(payload.length + 2) >> 8, (payload.length + 2) & 0xff]), payload]);
+  const segment = (marker: number, payload: Buffer) => {
+    const length = payload.length + 2; // the length field counts itself
+    return Buffer.concat([Buffer.from([0xff, marker, length >> 8, length & 0xff]), payload]);
+  };
   const quant = segment(0xdb, Buffer.concat([Buffer.from([0x00]), Buffer.alloc(64, 8)])); // all steps 8: DC = pixel - 128
   const frame = segment(0xc0, Buffer.from([8, size >> 8, size & 0xff, size >> 8, size & 0xff, 1, 1, 0x11, 0]));
   const dcTable = segment(0xc4, Buffer.concat([Buffer.from([0x00, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8])]));

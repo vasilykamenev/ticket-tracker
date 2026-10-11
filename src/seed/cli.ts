@@ -11,7 +11,10 @@ import { SeedGuardError } from './config.js';
 export function openSeedStorage(): ObjectStorage {
   const storage = createStorage(loadStorageEnv());
   if (storage instanceof MemoryStorage) {
-    throw new SeedGuardError('The demo attachments must really be stored: set S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (see .env.example).');
+    throw new SeedGuardError(
+      'The demo attachments must really be stored: set S3_ENDPOINT, S3_REGION, S3_BUCKET, ' +
+        'S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (see .env.example).',
+    );
   }
   return storage;
 }

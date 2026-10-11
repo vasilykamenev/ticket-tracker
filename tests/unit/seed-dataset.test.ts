@@ -27,17 +27,22 @@ describe('demo dataset: shape', () => {
     for (const [status, count] of Object.entries(STATUS_COUNTS)) expect(data.tickets.filter((t) => t.status === status)).toHaveLength(count);
   });
 
-  it('uses only example.test addresses and stays inside the 90-day window', () => {
+  it('uses only example.test addresses and keeps every ticket inside the 90 days before the reference date', () => {
     for (const email of [...data.users.map((u) => u.email), ...data.customers.map((c) => c.email)]) expect(email).toMatch(/@example\.test$/);
     const oldest = REF.getTime() - 90 * 24 * 60 * 60 * 1000;
     for (const t of data.tickets) {
-      expect(t.createdAt.getTime()).toBeGreaterThanOrEqual(oldest - 10 * 60 * 1000 * 1000); // a few tickets start earlier to fit a long history
+      expect(t.createdAt.getTime()).toBeGreaterThanOrEqual(oldest);
       expect(t.updatedAt.getTime()).toBeLessThanOrEqual(REF.getTime());
     }
   });
 
+  it('uses all four priorities and all five groups', () => {
+    expect(new Set(data.tickets.map((t) => t.priority))).toEqual(new Set(['LOW', 'NORMAL', 'HIGH', 'URGENT']));
+    expect(new Set(data.tickets.map((t) => t.groupId)).size).toBe(5);
+  });
+
   it('passes every consistency check (workflow chains, assignees, dates, comments, coverage)', () => {
-    const result = checkDataset(data);
+    const result = checkDataset(data, { referenceDate: REF });
     expect(result.problems).toEqual([]);
     expect(result.stats['agents in two groups']).toBe(10);
     expect(result.stats['NEW unassigned']).toBeGreaterThan(0);
@@ -74,8 +79,7 @@ describe('demo dataset: ticket numbers', () => {
 
 describe('demo dataset: files', () => {
   it('builds safe files that pass the same validation as uploads, the same bytes every time', () => {
-    const sample = data.attachments.filter((_, i) => i % 7 === 0);
-    for (const a of sample) {
+    for (const a of data.attachments) {
       const bytes = a.build();
       const checked = validateUpload({ originalName: a.originalName, declaredType: a.contentType, data: bytes });
       expect(checked.contentType).toBe(a.contentType);
@@ -84,8 +88,10 @@ describe('demo dataset: files', () => {
     expect(new Set(data.attachments.map((a) => a.kind))).toEqual(new Set(['png', 'jpeg', 'pdf', 'txt']));
   });
 
-  it('keeps most files within 50 KiB and puts them under server-chosen keys', () => {
-    expect(data.attachments.filter((a) => a.targetBytes <= 50 * 1024).length).toBeGreaterThan(SIZES.attachments * 0.8);
+  it('keeps most files within 50 KiB (the real bytes, not the target) and puts them under server-chosen keys', () => {
+    const sizes = data.attachments.map((a) => a.build().length);
+    expect(sizes.filter((n) => n <= 50 * 1024).length).toBeGreaterThan(SIZES.attachments * 0.8);
+    expect(Math.max(...sizes)).toBeLessThan(200 * 1024);
     for (const a of data.attachments) expect(a.objectKey).toMatch(new RegExp(`^tickets/${a.ticketId}/comments/${a.commentId}/[0-9a-f-]{36}$`));
   });
 });
@@ -113,8 +119,8 @@ describe('consistency checks catch corruption', () => {
     const closed = view.tickets.find((t) => t.status === 'CLOSED')!;
     closed.updatedAt = new Date(closed.updatedAt.getTime() + 24 * 60 * 60 * 1000); // a day after the closing
     const inFrozen = new Date(closed.updatedAt.getTime() - 1000);
-    view.comments.push({ ticketId: closed.id, authorUserId: view.users[2]!.id, createdAt: inFrozen, updatedAt: inFrozen });
-    view.comments.push({ ticketId: closed.id, authorUserId: view.users[2]!.id, createdAt: new Date(closed.createdAt.getTime() - 1000), updatedAt: closed.createdAt });
+    view.comments.push({ id: 'extra-1', ticketId: closed.id, authorUserId: view.users[2]!.id, createdAt: inFrozen, updatedAt: inFrozen });
+    view.comments.push({ id: 'extra-2', ticketId: closed.id, authorUserId: view.users[2]!.id, createdAt: new Date(closed.createdAt.getTime() - 1000), updatedAt: closed.createdAt });
     const text = checkDataset(view).problems.join('\n');
     expect(text).toMatch(/while the ticket was CLOSED/);
     expect(text).toMatch(/outside createdAt..updatedAt/);
@@ -129,6 +135,32 @@ describe('consistency checks catch corruption', () => {
     const text = checkDataset(view).problems.join('\n');
     expect(text).toMatch(/done by a non-admin/);
     expect(text).toMatch(/does not continue|version/);
+  });
+
+  it('a priority nobody has, a foreign address and a ticket older than the 90 days', () => {
+    const view = copy();
+    for (const t of view.tickets) if (t.priority === 'URGENT') t.priority = 'HIGH';
+    view.users[0]!.email = 'someone@gmail.com';
+    view.customers[0]!.email = 'customer@company.example';
+    view.tickets[0]!.createdAt = new Date(REF.getTime() - 100 * 24 * 60 * 60 * 1000);
+    const text = checkDataset(view, { referenceDate: REF }).problems.join('\n');
+    expect(text).toMatch(/no ticket has priority URGENT/);
+    expect(text).toMatch(/someone@gmail.com is not an example.test address/);
+    expect(text).toMatch(/customer@company.example is not an example.test address/);
+    expect(text).toMatch(/more than 90 days before the reference date/);
+  });
+
+  it('an inactive assignee, an attachment before its comment and a resolution without a date', () => {
+    const view = copy();
+    const assigned = view.tickets.find((t) => t.assignedAgentId)!;
+    view.agents.find((a) => a.id === assigned.assignedAgentId)!.isActive = false;
+    view.attachments[0]!.createdAt = new Date(0);
+    const resolving = view.history.find((h) => h.kind === 'STATUS_CHANGED' && h.after.status === 'RESOLVED')!;
+    resolving.after = { ...resolving.after, resolvedAt: null };
+    const text = checkDataset(view).problems.join('\n');
+    expect(text).toMatch(/inactive agent/);
+    expect(text).toMatch(/attachment of ticket .* lies outside its comment/);
+    expect(text).toMatch(/resolved without a resolution and date|does not continue/);
   });
 
   it('missing attachments', () => {

@@ -13,6 +13,18 @@ export const SIZES = { admins: 2, agents: 15, groups: 5, memberships: 25, custom
 export const STATUS_COUNTS: Record<StatusCode, number> = { NEW: 500, IN_PROGRESS: 600, WAITING_CUSTOMER: 300, RESOLVED: 300, UNRESOLVED: 100, CLOSED: 200 };
 export const MAX_COMMENTS_PER_TICKET = 20;
 export const TICKET_WINDOW_DAYS = 90;
+const ACCOUNT_AGE_DAYS = 500;
+const ADMIN_NAMES = ['Marta Lindgren', 'Pavel Orlov'] as const;
+/** Share of tickets per group, in the order of `names.GROUPS`. */
+const GROUP_WEIGHTS = [28, 20, 20, 20, 12] as const;
+/** Agents who also belong to a second group: the 25 memberships minus the 15 primary ones. */
+const SECOND_GROUP_AGENTS = SIZES.memberships - SIZES.agents;
+/** Customers 151..170: every second one is a near-duplicate of the previous name. */
+const SIMILAR_NAMES = { from: 150, to: 170 } as const;
+/** Every 70th ticket gets a subject of 150-200 characters. */
+const LONG_SUBJECT_EVERY = 70;
+const FILE_MIX: Record<FileKind, number> = { png: 80, jpeg: 40, pdf: 50, txt: 30 };
+const LONG_COMMENT = { minChars: 700, maxChars: 1800 } as const;
 /** The default dataset's tickets are numbered from this value + 1, so the numbers are the same after every reset. */
 export const TICKET_NUMBER_BASE = 1000;
 
@@ -48,8 +60,25 @@ export interface SeedTicket {
   createdAt: Date;
   updatedAt: Date;
 }
-export interface SeedHistory { id: string; ticketId: string; actorUserId: string; kind: HistoryKind; before: Snapshot | null; after: Snapshot; reason: string | null; createdAt: Date }
-export interface SeedComment { id: string; ticketId: string; authorUserId: string; body: string; version: number; createdAt: Date; updatedAt: Date }
+export interface SeedHistory {
+  id: string;
+  ticketId: string;
+  actorUserId: string;
+  kind: HistoryKind;
+  before: Snapshot | null;
+  after: Snapshot;
+  reason: string | null;
+  createdAt: Date;
+}
+export interface SeedComment {
+  id: string;
+  ticketId: string;
+  authorUserId: string;
+  body: string;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 export interface SeedAttachment {
   id: string;
   commentId: string;
@@ -88,6 +117,7 @@ export interface DatasetOptions {
   referenceDate?: Date;
 }
 
+const SUBJECT_MAX = 200; // what the ticket form allows
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 const pad = (n: number, width: number) => String(n).padStart(width, '0');
@@ -105,24 +135,26 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   const tag = dataset === DATASET ? '' : `.${dataset}`;
 
   // ---- accounts, groups, memberships
-  const longAgo = new Date(ref.getTime() - 500 * DAY);
+  const longAgo = new Date(ref.getTime() - ACCOUNT_AGE_DAYS * DAY);
   const users: SeedUser[] = [];
-  const admins = [['Marta Lindgren'], ['Pavel Orlov']].slice(0, SIZES.admins).map(([name], i) => {
-    const user: SeedUser = { id: id('user', 'admin', i + 1), email: `admin${i + 1}${tag}@example.test`, displayName: name!, role: 'ADMIN', createdAt: longAgo };
+  const admins = ADMIN_NAMES.map((displayName, i) => {
+    const user: SeedUser = { id: id('user', 'admin', i + 1), email: `admin${i + 1}${tag}@example.test`, displayName, role: 'ADMIN', createdAt: longAgo };
     users.push(user);
     return user;
   });
   const agents: SeedAgent[] = [];
-  const agentUsers: SeedUser[] = [];
   for (let i = 0; i < SIZES.agents; i++) {
-    const ru = i % 4 === 3;
-    const displayName = ru ? `${names.RU_FIRST[i % names.RU_FIRST.length]} ${names.RU_LAST[(i * 5) % names.RU_LAST.length]}` : `${names.EN_FIRST[i % names.EN_FIRST.length]} ${names.EN_LAST[(i * 7) % names.EN_LAST.length]}`;
+    const displayName = agentName(i);
     const user: SeedUser = { id: id('user', 'agent', i + 1), email: `agent${pad(i + 1, 2)}${tag}@example.test`, displayName, role: 'AGENT', createdAt: longAgo };
     users.push(user);
-    agentUsers.push(user);
     agents.push({ id: id('agent', i + 1), userId: user.id, displayName });
   }
-  const groups: SeedGroup[] = names.GROUPS.map((g) => ({ id: id('group', g.code), code: `${g.code}${tag ? `-${dataset}` : ''}`, name: g.name, description: g.description }));
+  const groups: SeedGroup[] = names.GROUPS.map((g) => ({
+    id: id('group', g.code),
+    code: tag ? `${g.code}-${dataset}` : g.code,
+    name: g.name,
+    description: g.description,
+  }));
 
   // 15 primary memberships (3 per group) plus 10 second ones: 25 in total, ten agents in two groups.
   const memberships: SeedMembership[] = [];
@@ -132,7 +164,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     membersByGroup.get(group.id)!.push(agent);
   };
   agents.forEach((agent, i) => addMembership(agent, groups[i % groups.length]!));
-  agents.slice(0, 10).forEach((agent, i) => addMembership(agent, groups[(i + 1) % groups.length]!));
+  agents.slice(0, SECOND_GROUP_AGENTS).forEach((agent, i) => addMembership(agent, groups[(i + 1) % groups.length]!));
   const userOfAgent = new Map(agents.map((a) => [a.id, a.userId]));
 
   // ---- customers
@@ -141,7 +173,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   for (let i = 0; i < SIZES.customers; i++) {
     const ru = cRng.chance(0.3);
     let name = ru ? `${cRng.pick(names.RU_FIRST)} ${cRng.pick(names.RU_LAST)}` : `${cRng.pick(names.EN_FIRST)} ${cRng.pick(names.EN_LAST)}`;
-    if (i >= 150 && i < 170 && i % 2 === 1) {
+    if (i >= SIMILAR_NAMES.from && i < SIMILAR_NAMES.to && i % 2 === 1) {
       // Similar names on purpose: the previous customer's name with one letter dropped from the surname.
       const [first, last] = customers[i - 1]!.name.split(' ');
       name = `${first} ${last!.slice(0, 2)}${last!.slice(3)}`;
@@ -169,7 +201,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   for (let index = 0; index < SIZES.tickets; index++) {
     const r = tRng.fork(`t${index}`);
     const finalStatus = statusList[index]!;
-    const group = r.weighted(groups.map((g, i) => [g, [28, 20, 20, 20, 12][i]!] as const));
+    const group = r.weighted(groups.map((g, i) => [g, GROUP_WEIGHTS[i]!] as const));
     const members = membersByGroup.get(group.id)!;
     const customer = r.pick(customers);
     const ru = r.chance(0.25);
@@ -195,7 +227,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
 
     let state = {
       subject: subjectFor(r, ru, index),
-      description: r.chance(0.7) ? `${r.pick(ru ? names.RU_DETAILS : names.EN_DETAILS)} ${r.pick(ru ? names.RU_DETAILS : names.EN_DETAILS)}` : r.pick(ru ? names.RU_DETAILS : names.EN_DETAILS),
+      description: describe(r, ru),
       priority,
       groupId: group.id,
       assignedAgentId: assignedAtCreation ? firstAssignee.id : (null as string | null),
@@ -211,11 +243,11 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     const created = new Date(createdAtMs);
     history.push({ id: id('history', index + 1, 0), ticketId, actorUserId: creatorUser, kind: 'CREATED', before: null, after: snap(state), reason: null, createdAt: created });
 
-    const frozenFrom: Array<{ from: number; to: number }> = []; // spans in which the ticket was CLOSED or UNRESOLVED
+    const frozenSpans: TimeSpan[] = []; // the periods in which the ticket was CLOSED or UNRESOLVED
     let spanStart = createdAtMs;
     let spanStatus: StatusCode = 'NEW';
     const closeSpan = (end: number) => {
-      if (isFrozen(spanStatus)) frozenFrom.push({ from: spanStart, to: end });
+      if (isFrozen(spanStatus)) frozenSpans.push({ from: spanStart, to: end });
     };
     steps.forEach((step, k) => {
       const at = new Date(stepTimes[k]!);
@@ -247,11 +279,11 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
       }
       history.push({ id: id('history', index + 1, k + 1), ticketId, actorUserId: actor, kind: step.kind, before, after: snap(state), reason, createdAt: at });
     });
-    if (isFrozen(spanStatus)) frozenFrom.push({ from: spanStart, to: Number.POSITIVE_INFINITY });
+    if (isFrozen(spanStatus)) frozenSpans.push({ from: spanStart, to: Number.POSITIVE_INFINITY });
 
     // Comments only in the spans in which the ticket was open for them.
     const lastEvent = steps.length > 0 ? stepTimes[steps.length - 1]! : createdAtMs;
-    const windows = openWindows(createdAtMs, ref.getTime(), frozenFrom);
+    const windows = openWindows(createdAtMs, ref.getTime(), frozenSpans);
     const ticketComments = makeComments(cmRng.fork(`c${index}`), id, index, ticketId, counts[index]!, windows, state.assignedAgentId, members, userOfAgent, admins, ru);
     comments.push(...ticketComments);
     const lastComment = ticketComments.reduce((latest, c) => Math.max(latest, c.updatedAt.getTime()), 0);
@@ -270,6 +302,12 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   }
 
   const attachments = makeAttachments(root.fork('attachments'), id, comments, tickets);
+  // A file is added a moment after its comment, so it can be the latest thing that happened to a ticket.
+  const ticketById = new Map(tickets.map((t) => [t.id, t]));
+  for (const a of attachments) {
+    const ticket = ticketById.get(a.ticketId)!;
+    if (a.createdAt.getTime() > ticket.updatedAt.getTime()) ticket.updatedAt = a.createdAt;
+  }
   return { dataset, seed, referenceDate: ref, users, agents, groups, memberships, customers, tickets, history, comments, attachments };
 }
 
@@ -328,8 +366,8 @@ function spread(r: Rng, from: number, to: number, n: number): number[] {
 }
 
 /** [from, to) spans of [start, end) that do not overlap the frozen spans. */
-function openWindows(start: number, end: number, frozen: Array<{ from: number; to: number }>): Array<{ from: number; to: number }> {
-  const out: Array<{ from: number; to: number }> = [];
+function openWindows(start: number, end: number, frozen: TimeSpan[]): TimeSpan[] {
+  const out: TimeSpan[] = [];
   let cursor = start;
   for (const span of [...frozen].sort((a, b) => a.from - b.from)) {
     if (span.from > cursor) out.push({ from: cursor, to: span.from });
@@ -360,15 +398,28 @@ function commentCounts(r: Rng, tickets: number, total: number): number[] {
   return counts;
 }
 
+/** A period of time in epoch milliseconds, [from, to). */
+type TimeSpan = { from: number; to: number };
+
+function agentName(i: number): string {
+  if (i % 4 === 3) return `${names.RU_FIRST[i % names.RU_FIRST.length]} ${names.RU_LAST[(i * 5) % names.RU_LAST.length]}`;
+  return `${names.EN_FIRST[i % names.EN_FIRST.length]} ${names.EN_LAST[(i * 7) % names.EN_LAST.length]}`;
+}
+
+function describe(r: Rng, ru: boolean): string {
+  const { details } = names.textsFor(ru);
+  return r.chance(0.7) ? `${r.pick(details)} ${r.pick(details)}` : r.pick(details);
+}
+
 function subjectFor(r: Rng, ru: boolean, index: number): string {
-  const area = r.pick(ru ? names.RU_AREAS : names.EN_AREAS);
-  const problem = r.pick(ru ? names.RU_PROBLEMS : names.EN_PROBLEMS);
+  const area = r.pick(names.textsFor(ru).areas);
+  const problem = r.pick(names.textsFor(ru).problems);
   const base = ru ? `${area[0]!.toUpperCase()}${area.slice(1)}: ${problem}` : `Problem: ${area} ${problem}`;
-  if (index % 70 !== 3) return base;
+  if (index % LONG_SUBJECT_EVERY !== 3) return base;
   // A deliberately long subject (up to the 200 characters the form allows).
   let long = base;
-  while (long.length < 150) long += `; ${r.pick(ru ? names.RU_PROBLEMS : names.EN_PROBLEMS)}`;
-  return long.length <= 200 ? long : long.slice(0, 197).replace(/[\s;:,]+\S*$/, '') + '...';
+  while (long.length < 150) long += `; ${r.pick(names.textsFor(ru).problems)}`;
+  return long.length <= SUBJECT_MAX ? long : long.slice(0, 197).replace(/[\s;:,]+\S*$/, '') + '...';
 }
 
 function commentBody(r: Rng, ru: boolean): string {
@@ -376,8 +427,8 @@ function commentBody(r: Rng, ru: boolean): string {
   if (r.chance(0.03)) {
     // A long, multi-paragraph note.
     const parts: string[] = [];
-    while (parts.join('\n\n').length < 700) parts.push(Array.from({ length: r.int(2, 4) }, () => r.pick(ru ? names.RU_DETAILS : names.EN_DETAILS)).join(' '));
-    return parts.join('\n\n').slice(0, Math.min(COMMENT_MAX, 1800));
+    while (parts.join('\n\n').length < LONG_COMMENT.minChars) parts.push(Array.from({ length: r.int(2, 4) }, () => r.pick(names.textsFor(ru).details)).join(' '));
+    return parts.join('\n\n').slice(0, Math.min(COMMENT_MAX, LONG_COMMENT.maxChars));
   }
   return r.chance(0.35) ? `${r.pick(pool)} ${r.pick(pool)}` : r.pick(pool);
 }
@@ -388,7 +439,7 @@ function makeComments(
   ticketIndex: number,
   ticketId: string,
   count: number,
-  windows: Array<{ from: number; to: number }>,
+  windows: TimeSpan[],
   assigneeId: string | null,
   members: SeedAgent[],
   userOfAgent: Map<string, string>,
@@ -434,7 +485,8 @@ function makeAttachments(
   comments: SeedComment[],
   tickets: SeedTicket[],
 ): SeedAttachment[] {
-  const kinds = r.shuffle<FileKind>([...Array<FileKind>(80).fill('png'), ...Array<FileKind>(40).fill('jpeg'), ...Array<FileKind>(50).fill('pdf'), ...Array<FileKind>(30).fill('txt')]).slice(0, SIZES.attachments);
+  const pool = (Object.keys(FILE_MIX) as FileKind[]).flatMap((kind) => Array<FileKind>(FILE_MIX[kind]).fill(kind));
+  const kinds = r.shuffle(pool).slice(0, SIZES.attachments);
   const ticketOf = new Map(tickets.map((t) => [t.id, t]));
   const attachments: SeedAttachment[] = [];
   let next = 0;
@@ -444,7 +496,7 @@ function makeAttachments(
     for (let j = 0; j < n; j++, next++) {
       const kind = kinds[next]!;
       const targetBytes = r.chance(0.9) ? r.int(2 * 1024, 50 * 1024) : r.int(50 * 1024, 120 * 1024);
-      const stem = r.pick(names.ATTACHMENT_NAMES[kind === 'jpeg' ? 'jpeg' : kind]);
+      const stem = r.pick(names.ATTACHMENT_NAMES[kind]);
       const fileRng = r.fork(`file-${next}`);
       const ticket = ticketOf.get(comment.ticketId)!;
       attachments.push({

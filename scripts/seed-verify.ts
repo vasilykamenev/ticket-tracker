@@ -2,7 +2,7 @@
 // seeded file in Storage. Exits with 1 and lists what is wrong. Usage: npm run seed:verify
 import { PrismaClient } from '@prisma/client';
 import { openSeedStorage, runCli } from '../src/seed/cli.js';
-import { verifyDemo } from '../src/seed/run.js';
+import { verifyDemo } from '../src/seed/verify.js';
 
 await runCli(async () => {
   const storage = openSeedStorage();

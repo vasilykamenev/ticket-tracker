@@ -4,7 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { verifyPassword } from '../../src/auth/password.js';
 import { SeedGuardError } from '../../src/seed/config.js';
 import { SIZES } from '../../src/seed/dataset.js';
-import { ownedIds, planReset, resetDemo, seedDemo, verifyDemo } from '../../src/seed/run.js';
+import { ownedIds } from '../../src/seed/owned.js';
+import { planReset, resetDemo } from '../../src/seed/reset.js';
+import { seedDemo } from '../../src/seed/seed.js';
+import { verifyDemo } from '../../src/seed/verify.js';
 import { MemoryStorage } from '../../src/storage/memory-storage.js';
 import { Fixtures } from './helpers/fixtures.js';
 
@@ -95,8 +98,9 @@ describe('seed:demo', () => {
     expect(after.sessionVersion).toBe(admin.sessionVersion + 1); // old sessions end
   }, 120_000);
 
-  it('refuses to run in production, and without passwords when accounts are missing', async () => {
+  it('refuses to run in production or in the test environment, and without passwords when accounts are missing', async () => {
     expect((await failure(seedDemo(prisma, storage, { ...env, APP_ENV: 'production' }, options))).message).toMatch(/production/);
+    expect((await failure(seedDemo(prisma, storage, { ...env, APP_ENV: 'test' }, options))).message).toMatch(/APP_ENV=test/);
     const empty = { dataset: `seedtest-${randomUUID().slice(0, 8)}` };
     const err = await failure(seedDemo(prisma, new MemoryStorage(), { APP_ENV: 'development' }, empty));
     expect(err).toBeInstanceOf(SeedGuardError);
@@ -145,6 +149,7 @@ describe('seed:reset', () => {
   it('wants the right environment, the explicit switch and the dataset name typed twice', async () => {
     expect((await failure(resetDemo(prisma, storage, { ...env, APP_ENV: 'production' }, args, options))).message).toMatch(/production/);
     expect((await failure(resetDemo(prisma, storage, { ...env, APP_ENV: 'test' }, args, options))).message).toMatch(/APP_ENV=test/);
+    expect((await failure(resetDemo(prisma, storage, { ...env, APP_ENV: undefined }, args, options))).message).toMatch(/APP_ENV=development or APP_ENV=demo explicitly/);
     expect((await failure(resetDemo(prisma, storage, { ...env, ALLOW_DEMO_RESET: undefined }, args, options))).message).toMatch(/ALLOW_DEMO_RESET/);
     expect((await failure(resetDemo(prisma, storage, env, { dataset, confirm: 'nope' }, options))).message).toMatch(/--confirm/);
     expect((await failure(resetDemo(prisma, storage, env, { dataset: 'other', confirm: 'other' }, options))).message).toMatch(/--dataset/);
@@ -157,8 +162,42 @@ describe('seed:reset', () => {
     expect((await rows()).tickets).toBe(2000);
   });
 
+  it('hands over the counts before it deletes anything, not afterwards', async () => {
+    let planned: Record<string, number> | undefined;
+    let before: Awaited<ReturnType<typeof rows>> | undefined;
+    await resetDemo(prisma, storage, env, args, {
+      ...options,
+      deleteOnly: true,
+      onPlan: async (plan) => {
+        planned = plan.rows;
+        before = await rows(); // asked from inside the callback: nothing has been deleted yet
+      },
+    });
+    expect(planned).toMatchObject({ users: 17, tickets: 2000, comments: 10000, attachments: 200 });
+    expect(before).toEqual({ users: 17, tickets: 2000, comments: 10000, attachments: 200 });
+    expect(await rows()).toEqual({ users: 0, tickets: 0, comments: 0, attachments: 0 }); // and then it went through
+    await seedDemo(prisma, storage, env, options); // put the dataset back for the tests that follow
+  }, 300_000);
+
+  it('removes the files of rows in every state, not only READY ones', async () => {
+    const comment = await prisma.comment.findFirstOrThrow({ where: { ticketId: { in: ids.ticketIds } } });
+    const user = await prisma.user.findFirstOrThrow({ where: { id: { in: ids.userIds } } });
+    const leftovers = (['PENDING', 'FAILED', 'DELETING'] as const).map((state, i) => ({ state, key: `tickets/${comment.ticketId}/comments/${comment.id}/state-${i}` }));
+    for (const { state, key } of leftovers) {
+      await storage.put(key, Buffer.from(state), 'text/plain');
+      await prisma.attachment.create({
+        data: { commentId: comment.id, bucket: storage.bucket, objectKey: key, originalName: `${state}.txt`, contentType: 'text/plain', sizeBytes: state.length, sha256: 'b'.repeat(64), state, createdByUserId: user.id },
+      });
+    }
+    const plan = await planReset(prisma, dataset);
+    expect(plan.rows.attachments).toBe(203);
+    expect(leftovers.every(({ key }) => plan.keys.includes(key))).toBe(true);
+    await prisma.attachment.deleteMany({ where: { objectKey: { in: leftovers.map((l) => l.key) } } });
+    await Promise.all(leftovers.map((l) => storage.delete(l.key)));
+  });
+
   it('shows what it would delete on a dry run, and deletes nothing', async () => {
-    const result = await resetDemo(prisma, storage, env, args, { ...options, dryRunOnly: true });
+    const result = await resetDemo(prisma, storage, env, args, { ...options, dryRun: true });
     expect(result.deleted).toBe(false);
     expect(result.plan.rows).toMatchObject({ users: 17, tickets: 2000, comments: 10000, attachments: 200 });
     expect(result.plan.objects).toBe(200);
