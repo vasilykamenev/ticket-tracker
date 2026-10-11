@@ -1,6 +1,6 @@
 import { PayloadTooLargeError, UnsupportedMediaError } from '../domain/errors.js';
 
-export const MAX_FILE_BYTES = 5 * 1024 * 1024;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export type AllowedType = 'image/png' | 'image/jpeg' | 'application/pdf' | 'text/plain';
 
@@ -67,13 +67,13 @@ const extensionOf = (name: string) => (name.includes('.') ? (name.split('.').pop
 const mediaTypeOf = (declared: string) => declared.split(';')[0]!.trim().toLowerCase();
 
 /**
- * Accepts PNG, JPEG, PDF and UTF-8 text up to 5 MiB. The extension, the declared content type and the actual
+ * Accepts PNG, JPEG, PDF and UTF-8 text up to 10 MiB. The extension, the declared content type and the actual
  * bytes must all agree: an executable renamed to .png fails the signature check, and SVG, HTML, archives and
  * executables are not on the list at all. This is not antivirus protection.
  */
 export function validateUpload(file: { originalName: string; declaredType: string; data: Buffer }): CheckedFile {
   if (file.data.length === 0) throw new UnsupportedMediaError('The file is empty.');
-  if (file.data.length > MAX_FILE_BYTES) throw new PayloadTooLargeError('The file is larger than 5 MiB.');
+  if (file.data.length > MAX_FILE_BYTES) throw new PayloadTooLargeError('The file is larger than 10 MiB.');
 
   const originalName = sanitizeFilename(file.originalName);
   const detected = detect(file.data);

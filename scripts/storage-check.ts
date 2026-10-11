@@ -45,7 +45,7 @@ if (failures.length === 0) {
 } else {
   console.error(`\nstorage check FAILED for: ${failures.join(', ')}`);
   if (failures.length < SAMPLES.length) {
-    console.error('Writing works, but the bucket refuses some types. In the bucket settings, allow image/png, image/jpeg, application/pdf and text/plain (or remove the restriction) and set the file size limit to at least 5 MiB. The application validates every file itself.');
+    console.error('Writing works, but the bucket refuses some types. In the bucket settings, allow image/png, image/jpeg, application/pdf and text/plain (or remove the restriction) and set the file size limit to at least 10 MiB (the application limit is 10 MiB). The application validates every file itself.');
   } else {
     console.error('Nothing could be written: check S3_ENDPOINT, S3_REGION, the access keys and that the bucket exists.');
   }

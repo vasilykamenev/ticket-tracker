@@ -37,7 +37,7 @@ export function ticketUrl(ticketId: string): string {
   return `${adminRoot()}/resources/Ticket/records/${ticketId}/show`;
 }
 
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'pdf', 'txt'];
 
 export function formatBytes(bytes: number): string {
@@ -51,7 +51,7 @@ export function checkFile(file: File): string | null {
   const extension = file.name.includes('.') ? (file.name.split('.').pop() ?? '').toLowerCase() : '';
   if (!ALLOWED_EXTENSIONS.includes(extension)) return 'Only PNG, JPEG, PDF and plain text (.txt) files can be attached.';
   if (file.size === 0) return 'The file is empty.';
-  if (file.size > MAX_UPLOAD_BYTES) return `The file is ${formatBytes(file.size)}; the limit is 5 MB.`;
+  if (file.size > MAX_UPLOAD_BYTES) return `The file is ${formatBytes(file.size)}; the limit is 10 MB.`;
   return null;
 }
 

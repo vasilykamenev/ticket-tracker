@@ -23,14 +23,14 @@ export const rejectOversizedBody: RequestHandler = (req, _res, next) => {
   const length = Number(req.get('content-length'));
   if (Number.isFinite(length) && length > MAX_FILE_BYTES + MULTIPART_OVERHEAD_BYTES) {
     discardBody(req);
-    return next(new PayloadTooLargeError('The file is larger than 5 MiB.'));
+    return next(new PayloadTooLargeError('The file is larger than 10 MiB.'));
   }
   next();
 };
 
 /**
  * At most `max` uploads are processed at the same time, which bounds the memory they can hold
- * (max x 5 MiB). Excess requests get HTTP 429 instead of queueing.
+ * (max x 10 MiB). Excess requests get HTTP 429 instead of queueing.
  */
 export function limitConcurrentUploads(max: number): RequestHandler {
   let active = 0;

@@ -14,7 +14,7 @@ const actorOf = (req: Request): Actor => {
 
 /**
  * Memory storage only: multer keeps the file in a bounded Buffer and never writes a temporary file. One file
- * of at most 5 MiB per request, no other form fields.
+ * of at most 10 MiB per request, no other form fields.
  */
 const parser = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_BYTES, files: 1, fields: 0, parts: 2 } }).single('file');
 
@@ -23,7 +23,7 @@ const parseUpload: RequestHandler = (req, res, next) => {
     if (!err) return next();
     if (err instanceof multer.MulterError) {
       return next(
-        err.code === 'LIMIT_FILE_SIZE' ? new PayloadTooLargeError('The file is larger than 5 MiB.') : new UnsupportedMediaError('Send exactly one file, in the "file" field.'),
+        err.code === 'LIMIT_FILE_SIZE' ? new PayloadTooLargeError('The file is larger than 10 MiB.') : new UnsupportedMediaError('Send exactly one file, in the "file" field.'),
       );
     }
     next(err);

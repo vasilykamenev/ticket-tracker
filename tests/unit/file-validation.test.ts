@@ -25,7 +25,7 @@ describe('accepted files', () => {
     expect(check('bom.txt', 'text/plain', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('hello')])).contentType).toBe('text/plain');
   });
 
-  it('accepts exactly 5 MiB and rejects one byte more', () => {
+  it('accepts exactly 10 MiB and rejects one byte more', () => {
     const header = PNG;
     const atLimit = Buffer.concat([header, Buffer.alloc(MAX_FILE_BYTES - header.length)]);
     expect(check('big.png', 'image/png', atLimit).contentType).toBe('image/png');
