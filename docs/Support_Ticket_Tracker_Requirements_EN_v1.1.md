@@ -228,7 +228,7 @@ Use one private bucket, `ticket-attachments`; public URLs are prohibited. Supaba
 
 Selected path: browser → authenticated/CSRF-protected upload handler → bounded RAM buffer → S3. Do not use a default multipart parser that writes temporary files. Mount the dedicated upload route before the general AdminJS parser. Enforce file-count and size limits before buffering the entire body.
 
-Project limits: one file per upload request, up to 5 MiB, at most 5 attachments per comment; PNG, JPEG, PDF, UTF-8 TXT. Validate extension, content type, and file signature/content. Reject SVG, HTML, executables, and archives. Validate text decoding and reject binary content for TXT. The client filename is metadata only. The server generates objectKey as `tickets/{ticketId}/comments/{commentId}/{uuid}`. Do not accept a bucket or object key supplied by the browser.
+Project limits: one file per upload request, up to 10 MiB, at most 5 attachments per comment; PNG, JPEG, PDF, UTF-8 TXT. Validate extension, content type, and file signature/content. Reject SVG, HTML, executables, and archives. Validate text decoding and reject binary content for TXT. The client filename is metadata only. The server generates objectKey as `tickets/{ticketId}/comments/{commentId}/{uuid}`. Do not accept a bucket or object key supplied by the browser.
 
 Upload sequence:
 
