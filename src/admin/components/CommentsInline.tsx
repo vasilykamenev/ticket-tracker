@@ -193,7 +193,7 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
                     }}
                   />
                   <Text as="span" variant="sm" ml="default">
-                    {c.attachments.length} / {MAX_ATTACHMENTS} files, up to 5 MB each (PNG, JPEG, PDF, TXT)
+                    {c.attachments.length} / {MAX_ATTACHMENTS} files, up to 10 MB each (PNG, JPEG, PDF, TXT)
                   </Text>
                 </Box>
               )}

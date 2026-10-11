@@ -82,7 +82,7 @@ describe('uploading', () => {
     const s = await scenario();
     const before = storage.count;
     expect((await failure(attachments.upload(s.author.actor, s.comment.id, { ...png(), declaredType: 'application/pdf' }))).status).toBe(415);
-    expect((await failure(attachments.upload(s.author.actor, s.comment.id, { originalName: 'x.png', declaredType: 'image/png', data: Buffer.alloc(5 * 1024 * 1024 + 1, 1) }))).status).toBe(413);
+    expect((await failure(attachments.upload(s.author.actor, s.comment.id, { originalName: 'x.png', declaredType: 'image/png', data: Buffer.alloc(10 * 1024 * 1024 + 1, 1) }))).status).toBe(413);
     expect((await failure(attachments.upload(s.author.actor, s.comment.id, { originalName: 'logo.svg', declaredType: 'image/svg+xml', data: Buffer.from('<svg/>') }))).status).toBe(415);
     expect(storage.count).toBe(before);
     expect(await prisma.attachment.count({ where: { commentId: s.comment.id } })).toBe(0);

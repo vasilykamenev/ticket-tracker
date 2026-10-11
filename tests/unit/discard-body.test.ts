@@ -41,7 +41,7 @@ describe('refusals discard the unread body', () => {
   });
 
   it('an oversized body and a busy server', () => {
-    const big = fakeReq({ get: (name: string) => (name === 'content-length' ? String(10 * 1024 * 1024) : undefined) });
+    const big = fakeReq({ get: (name: string) => (name === 'content-length' ? String(11 * 1024 * 1024) : undefined) });
     rejectOversizedBody(big.req, fakeRes(), vi.fn());
     expect(big.resume).toHaveBeenCalledOnce();
 

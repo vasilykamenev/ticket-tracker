@@ -104,11 +104,11 @@ describe('uploading', () => {
     expect(await prisma.attachment.count({ where: { commentId: comment.id } })).toBe(0);
   });
 
-  it('refuses a file over 5 MiB with 413 and keeps nothing', async () => {
+  it('refuses a file over 10 MiB with 413 and keeps nothing', async () => {
     const { comment } = await target();
     const before = storage.count;
     const s = await signIn(app, author.user.normalizedEmail);
-    const big = Buffer.concat([PNG, Buffer.alloc(6 * 1024 * 1024)]);
+    const big = Buffer.concat([PNG, Buffer.alloc(11 * 1024 * 1024)]);
     const res = await s.with('post', upload(comment.id)).attach('file', big, { filename: 'big.png', contentType: 'image/png' });
     expect(res.status).toBe(413);
     expect(res.body.error).toBe('file_too_large');

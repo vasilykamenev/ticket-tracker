@@ -121,8 +121,8 @@ describe('upload limits', () => {
   };
 
   it('refuses an oversized body from its Content-Length before reading it', () => {
-    expect(run(rejectOversizedBody, req(String(6 * 1024 * 1024)))).toBeInstanceOf(PayloadTooLargeError);
-    expect(run(rejectOversizedBody, req(String(5 * 1024 * 1024 + 1000)))).toBeUndefined(); // multipart framing allowance
+    expect(run(rejectOversizedBody, req(String(11 * 1024 * 1024)))).toBeInstanceOf(PayloadTooLargeError);
+    expect(run(rejectOversizedBody, req(String(10 * 1024 * 1024 + 1000)))).toBeUndefined(); // multipart framing allowance
     expect(run(rejectOversizedBody, req(undefined))).toBeUndefined(); // no length: the parser's own limit applies
   });
 
