@@ -47,6 +47,10 @@ Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/
 | `perf` | Performance improvement |
 | `docs` | Documentation only |
 | `chore` | Maintenance that fits no other type |
+## Bulk status change
+
+On the ticket list, tick up to 100 tickets and use **Bulk Change Status**. The form lists the selected tickets and offers only the changes that are valid for all of them. Everything is applied in one transaction: if any ticket is refused (changed by someone else, wrong status, not allowed for your role), nothing changes and the form names every refused ticket (`Ticket #123: ...`). For more than 100 tickets, work in batches. Details: D-016.
+
 ## Attachments and storage
 Files are stored in a **private** Supabase Storage bucket `ticket-attachments` through its S3-compatible API; they never touch the server's disk. Set `S3_ENDPOINT` (`https://<project-ref>.supabase.co/storage/v1/s3`), `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_BUCKET` (all four S3 variables are required in production and demo). Without them, development keeps files in memory and loses them on restart.
 
