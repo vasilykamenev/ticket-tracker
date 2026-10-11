@@ -47,6 +47,16 @@ Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/
 | `perf` | Performance improvement |
 | `docs` | Documentation only |
 | `chore` | Maintenance that fits no other type |
+## Demo data
+
+```
+SEED_ADMIN_PASSWORD=... SEED_AGENT_PASSWORD=... npm run seed:demo -- --seed 42   # 17 accounts, 300 customers, 2000 tickets, 10000 comments, 200 files
+npm run seed:verify                                                              # counts, workflow, dates, and every file present in Storage
+ALLOW_DEMO_RESET=true npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only]
+```
+
+Accounts are `admin1@example.test`, `admin2@example.test` and `agent01@example.test` ... `agent15@example.test`; the passwords are the two environment variables above (12+ characters, hashed, never printed). The files need the S3 settings of `.env` (the in-memory storage is refused). Reruns add nothing twice; `--rotate-demo-passwords` changes the passwords of existing demo accounts. Reset removes only the demo rows and files and is refused in production. Details and limits: D-017.
+
 ## Bulk status change
 
 On the ticket list, tick up to 100 tickets and use **Bulk Change Status**. The form lists the selected tickets and offers only the changes that are valid for all of them. Everything is applied in one transaction: if any ticket is refused (changed by someone else, wrong status, not allowed for your role), nothing changes and the form names every refused ticket (`Ticket #123: ...`). For more than 100 tickets, work in batches.
