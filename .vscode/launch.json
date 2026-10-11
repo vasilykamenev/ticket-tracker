@@ -24,6 +24,71 @@
       "console": "integratedTerminal"
     },
     {
+      "name": "Create the first administrator",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "admin:create", "--", "--email", "${input:adminEmail}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Seed: create or complete the demo data",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "seed:demo"],
+      "env": {
+        "SEED_ADMIN_PASSWORD": "${input:seedAdminPassword}",
+        "SEED_AGENT_PASSWORD": "${input:seedAgentPassword}"
+      },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Seed: verify the demo data",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "seed:verify"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Seed: reset (dry run, deletes nothing)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "seed:reset", "--", "--dataset", "takehome-demo", "--confirm", "takehome-demo", "--dry-run"],
+      "env": { "ALLOW_DEMO_RESET": "true" },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Seed: reset (delete and recreate the demo data)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "seed:reset", "--", "--dataset", "takehome-demo", "--confirm", "${input:resetConfirm}"],
+      "env": {
+        "ALLOW_DEMO_RESET": "true",
+        "SEED_ADMIN_PASSWORD": "${input:seedAdminPassword}",
+        "SEED_AGENT_PASSWORD": "${input:seedAgentPassword}"
+      },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Seed: delete the demo data only",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "seed:reset", "--", "--dataset", "takehome-demo", "--confirm", "${input:resetConfirm}", "--delete-only"],
+      "env": { "ALLOW_DEMO_RESET": "true" },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
       "name": "Tests (vitest, current file)",
       "type": "node",
       "request": "launch",
@@ -33,6 +98,32 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "adminEmail",
+      "type": "promptString",
+      "description": "Administrator email",
+      "default": "admin@example.test"
+    },
+    {
+      "id": "seedAdminPassword",
+      "type": "promptString",
+      "description": "Password for the demo administrators (12+ characters, typed hidden, not stored)",
+      "password": true
+    },
+    {
+      "id": "seedAgentPassword",
+      "type": "promptString",
+      "description": "Password for the demo agents (12+ characters, typed hidden, not stored)",
+      "password": true
+    },
+    {
+      "id": "resetConfirm",
+      "type": "promptString",
+      "description": "Type the dataset name to confirm: takehome-demo",
+      "default": ""
     }
   ],
   "compounds": [
