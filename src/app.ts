@@ -110,6 +110,11 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
     }
   });
 
+  // The application lives under /admin; the bare address would otherwise be an empty 404 page.
+  app.get('/', (_req, res) => {
+    res.redirect(302, admin.options.rootPath);
+  });
+
   app.use(createSessionMiddleware(env, sessionPool));
   app.get('/auth/csrf-client.js', (_req, res) => {
     res.type('application/javascript').sendFile(path.join(publicDir, 'csrf-client.js'));
