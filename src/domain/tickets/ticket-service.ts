@@ -1,10 +1,12 @@
 import type { Prisma, PrismaClient, Ticket, TicketStatus } from '@prisma/client';
 import { z } from 'zod';
 import { isRecordNotFound, lockAgent, lockGroup, lockStatus, loadScope, type Tx } from '../db.js';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
+import { type BulkFailure, BulkRejectedError, ConflictError, DomainError, ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
 import {
   assignTicketSchema,
+  BULK_MAX_TICKETS,
+  bulkChangeStatusSchema,
   changeStatusSchema,
   createTicketSchema,
   parseInput,
@@ -147,7 +149,58 @@ export class TicketService {
     });
   }
 
-  /** Shared by changeStatus and the all-or-nothing bulk action (stage 9). */
+  /**
+   * One status change for up to BULK_MAX_TICKETS tickets, all or nothing. Every ticket goes through the same
+   * rules as a single change (scope, version, workflow, outcome fields, history). The whole batch is tried so
+   * the operator sees every refused ticket at once; any refusal rolls everything back.
+   */
+  async bulkChangeStatus(actor: Actor, input: unknown): Promise<{ changed: Array<{ id: string; number: number; status: string }> }> {
+    // Size and shape are checked before the database is touched.
+    const raw = (input ?? {}) as { items?: unknown };
+    if (Array.isArray(raw.items) && raw.items.length > BULK_MAX_TICKETS) {
+      throw new ValidationError('batch_too_large', `Select at most ${BULK_MAX_TICKETS} tickets at a time`, { items: `at most ${BULK_MAX_TICKETS} tickets` });
+    }
+    const data = parseInput(bulkChangeStatusSchema, input);
+    if (data.targetStatus === 'UNRESOLVED' && data.confirmSharedReason !== true) {
+      throw new ValidationError('validation', 'Invalid input', { confirmSharedReason: 'confirm that this reason is appropriate for every selected ticket' });
+    }
+
+    const versions = new Map<string, number>();
+    for (const item of data.items) {
+      const seen = versions.get(item.id);
+      if (seen !== undefined && seen !== item.version) {
+        throw new ValidationError('validation', 'Invalid input', { items: `ticket ${item.id} is listed twice with different versions` });
+      }
+      versions.set(item.id, item.version);
+    }
+    const { items: _items, confirmSharedReason: _confirmed, ...change } = data;
+    const ids = [...versions.keys()].sort(); // one fixed order, so two overlapping batches cannot deadlock
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const scope = await loadScope(tx, actor);
+        const visible = await tx.ticket.findMany({ where: { AND: [{ id: { in: ids } }, ticketScopeWhere(scope)] }, select: { id: true, number: true } });
+        const numbers = new Map(visible.map((t) => [t.id, t.number]));
+
+        const failures: BulkFailure[] = [];
+        const changed: Array<{ id: string; number: number; status: string }> = [];
+        for (const id of ids) {
+          try {
+            const updated = await this.changeStatusInTx(tx, actor, scope, id, versions.get(id)!, change);
+            changed.push({ id, number: updated.number, status: updated.status.code });
+          } catch (err) {
+            if (!(err instanceof DomainError)) throw err; // unexpected: roll back and surface as a server error
+            failures.push({ ticketId: id, number: numbers.get(id) ?? null, code: err.code, message: err.message });
+          }
+        }
+        if (failures.length > 0) throw new BulkRejectedError(failures); // rolls the whole transaction back
+        return { changed };
+      },
+      { timeout: 30_000, maxWait: 5_000 },
+    );
+  }
+
+  /** Shared by changeStatus and the all-or-nothing bulk action. */
   async changeStatusInTx(tx: Tx, actor: Actor, scope: Scope, ticketId: string, expectedVersion: number, input: unknown): Promise<TicketWithStatus> {
     const data = parseInput(changeStatusSchema, input);
     const version = parseInput(versionSchema, expectedVersion);

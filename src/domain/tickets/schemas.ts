@@ -49,11 +49,28 @@ export const changeStatusSchema = z
   })
   .strict();
 
+/** Largest batch the bulk status change accepts; bigger selections are split by the operator. */
+export const BULK_MAX_TICKETS = 100;
+
+export const bulkChangeStatusSchema = z
+  .object({
+    // id/version pairs as the operator saw them, so every ticket is checked for concurrent edits.
+    items: z.array(z.object({ id: uuid, version: z.number().int().positive() }).strict()).min(1).max(BULK_MAX_TICKETS),
+    targetStatus: z.enum(STATUS_CODES),
+    reason: trimmed(1, REASON_MAX).optional(),
+    resolution: trimmed(RESOLUTION_MIN, OUTCOME_MAX).optional(),
+    unresolvedReason: trimmed(RESOLUTION_MIN, OUTCOME_MAX).optional(),
+    // UNRESOLVED applies one shared reason to every ticket; the operator has to say that is appropriate.
+    confirmSharedReason: z.boolean().optional(),
+  })
+  .strict();
+
 export const versionSchema = z.number().int().positive();
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
 export type AssignTicketInput = z.infer<typeof assignTicketSchema>;
+export type BulkChangeStatusInput = z.infer<typeof bulkChangeStatusSchema>;
 export type ChangeStatusInput = z.infer<typeof changeStatusSchema>;
 
 export function parseInput<T>(schema: z.ZodType<T>, input: unknown): T {
