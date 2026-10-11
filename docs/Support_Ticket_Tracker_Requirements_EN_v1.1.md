@@ -102,7 +102,7 @@ Deactivate reference records and users rather than deleting them. Foreign keys w
 
 ### 5.1 Validation and indexes
 
-Project limits: subject 5–200 characters, description 1–10000, comment.body 1–5000, resolution and unresolvedReason 10–2000, name 1–200. Priority values: LOW, NORMAL, HIGH, URGENT. Normalize email before persistence; HTML input type=email is not sufficient validation.
+Project limits: subject 5–200 characters, description 1–1000, comment.body 1–5000, resolution and unresolvedReason 10–2000, name 1–200. Priority values: LOW, NORMAL, HIGH, URGENT. Normalize email before persistence; HTML input type=email is not sufficient validation.
 
 Ticket indexes: `(groupId, statusId, updatedAt)`, `(assignedAgentId, statusId, updatedAt)`, `(customerId, createdAt)`. Comment: `(ticketId, createdAt)`. History: `(ticketId, createdAt)`. AgentGroup: unique pair and a groupId index. Include id as a sort tie-breaker for stable pagination. Start with ticket number/subject and customer name/email search, without Elasticsearch. Measure queries before adding trigram or full-text indexes as data grows.
 
