@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Badge, Box, Button, CheckBox, FormGroup, H3, Label, Loader, MessageBox, Select, Table, TableBody, TableCell, TableHead, TableRow, Text, TextArea } from '@adminjs/design-system';
 import type { ActionProps } from 'adminjs';
 import type { BulkFormState } from '../../domain/tickets/ticket-queries.js';
+import type { BulkChanged } from '../../domain/tickets/ticket-service.js';
 import { adminRoot, bulkAction, toServerError, type ServerError } from './api.js';
 
 type Option = { value: string; label: string };
@@ -19,6 +20,7 @@ const BulkChangeStatusForm = ({ records }: ActionProps) => {
   const [confirmed, setConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<ServerError | null>(null);
+  const [done, setDone] = useState<BulkChanged[] | null>(null);
 
   useEffect(() => {
     if (selected.length === 0) return;
@@ -35,10 +37,24 @@ const BulkChangeStatusForm = ({ records }: ActionProps) => {
   if (loadError) return <MessageBox variant="danger" message={loadError} />;
   if (!state) return <Loader />;
 
+  if (done) {
+    return (
+      <Box variant="white">
+        <MessageBox variant="success" message={`${done.length} ${done.length === 1 ? 'ticket' : 'tickets'} changed: ${done.map((t) => `#${t.number}`).join(', ')}`} />
+        <Box mt="xl">
+          <Button as="a" href={listUrl()} variant="primary">
+            Back to the list
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
   const rule = state.targets.find((t) => t.code === target);
   const targets: Option[] = state.targets.map((t) => ({ value: t.code, label: t.name }));
   const count = state.tickets.length;
   const noun = count === 1 ? 'ticket' : 'tickets';
+  const unassigned = state.tickets.filter((t) => !t.assigned).length;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -46,7 +62,7 @@ const BulkChangeStatusForm = ({ records }: ActionProps) => {
     setSaving(true);
     setError(null);
     try {
-      await bulkAction('Ticket', 'bulkChangeStatus', selected, {
+      const result = await bulkAction<{ changed: BulkChanged[] }>('Ticket', 'bulkChangeStatus', selected, {
         // The versions the operator is looking at, so a ticket edited meanwhile is refused instead of overwritten.
         items: state.tickets.map((t) => ({ id: t.id, version: t.version })),
         targetStatus: rule.code,
@@ -54,7 +70,7 @@ const BulkChangeStatusForm = ({ records }: ActionProps) => {
         ...(rule.resolution ? { resolution } : {}),
         ...(rule.unresolvedReason ? { unresolvedReason, confirmSharedReason: confirmed } : {}),
       });
-      window.location.assign(listUrl());
+      setDone(result.changed);
     } catch (e) {
       setError(toServerError(e));
       setSaving(false);
@@ -100,6 +116,13 @@ const BulkChangeStatusForm = ({ records }: ActionProps) => {
             <Select value={targets.find((o) => o.value === target)} options={targets} onChange={(o: Option) => setTarget(o.value)} />
             <Text variant="sm">Only changes that are valid for every selected ticket are listed. If any ticket is refused, none is changed.</Text>
           </FormGroup>
+
+          {rule?.needsAssignee && unassigned > 0 && (
+            <MessageBox
+              variant="warning"
+              message={`${unassigned} selected ${unassigned === 1 ? 'ticket has' : 'tickets have'} no assignee. This change needs one, so they would be refused and nothing would change. Assign them first.`}
+            />
+          )}
 
           {rule?.resolution && (
             <FormGroup>

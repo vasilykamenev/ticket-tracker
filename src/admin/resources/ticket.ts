@@ -129,11 +129,12 @@ export function ticketResource(
           handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
             const actor = actorFromContext(context);
             if (request.method === 'get') {
-              if ((context.records ?? []).length === 0) throw new NotFoundError('ticket');
+              const records = context.records ?? [];
+              if (records.length === 0) throw new NotFoundError('ticket');
               // The ids as selected, not as AdminJS loaded them, so ids that are out of scope are counted as unavailable.
-              const ids = String(request.query?.recordIds ?? '').split(',').filter(Boolean);
+              const ids = (query(request, 'recordIds') ?? '').split(',').filter(Boolean);
               // AdminJS needs the records themselves to open the page; the form reads the rest of this response itself.
-              return { records: (context.records ?? []).map((r) => r.toJSON(context.currentAdmin)), ...(await queries.bulkFormState(actor, ids)) };
+              return { records: records.map((r) => r.toJSON(context.currentAdmin)), ...(await queries.bulkFormState(actor, ids)) };
             }
             const result = await tickets.bulkChangeStatus(actor, request.payload);
             return { records: [], ok: true, ...result };

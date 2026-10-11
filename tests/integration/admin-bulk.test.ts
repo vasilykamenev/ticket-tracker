@@ -130,6 +130,37 @@ describe('bulkChangeStatus over HTTP', () => {
     expect(await statusOf(t!.id)).toBe('NEW');
   });
 
+  it('refuses an oversized selection in the query before AdminJS loads a single record', async () => {
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+    const get = await a.get(bulk(ids));
+    expect(get.status).toBe(422);
+    expect(get.body.error).toBe('batch_too_large');
+    const post = await a.post(bulk(ids), { items: [{ id: ids[0], version: 1 }], targetStatus: 'IN_PROGRESS' });
+    expect(post.status).toBe(422);
+    expect(post.body.error).toBe('batch_too_large');
+    const repeated = await a.get(bulk([...ids.slice(0, 100), ids[0]!])); // 101 entries but 100 distinct: not too large (and not found)
+    expect(repeated.status).toBe(404);
+    const array = await a.get(`${API}/Ticket/bulk/bulkChangeStatus?recordIds=${ids[0]}&recordIds=${ids[1]}`);
+    expect(array.status).toBe(422);
+  });
+
+  it('tells the form which tickets have no assignee and which changes need one', async () => {
+    const [unassigned] = [await tickets.create(admin.actor, { subject: 'No assignee yet', description: 'd', customerId: customer.id, groupId: groupA.id })];
+    const [assigned] = await make(1);
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const res = await a.get(bulk([unassigned.id, assigned!.id]));
+    expect(res.status).toBe(200);
+    const byId = new Map(res.body.tickets.map((t: { id: string; assigned: boolean }) => [t.id, t.assigned]));
+    expect(byId.get(unassigned.id)).toBe(false);
+    expect(byId.get(assigned!.id)).toBe(true);
+    expect(res.body.targets).toMatchObject([{ code: 'IN_PROGRESS', needsAssignee: true }]);
+
+    const refused = await a.post(bulk([unassigned.id, assigned!.id]), { items: pairs([unassigned, assigned!]), targetStatus: 'IN_PROGRESS' });
+    expect(refused.status).toBe(409);
+    expect(Object.keys(refused.body.details)).toEqual([`Ticket #${unassigned.number}`]); // the assigned one is only rolled back
+  });
+
   it('keeps bulk delete switched off', async () => {
     const [t] = await make(1);
     const a = await signIn(app, admin.user.normalizedEmail);
