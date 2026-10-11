@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Badge, Box, Button, Label, Loader, MessageBox, Text, TextArea } from '@adminjs/design-system';
 import type { BasePropertyProps } from 'adminjs';
 import type { CommentsPage } from '../../domain/comments/comment-queries.js';
-import { postRecordAction, recordData, toServerError } from './api.js';
+import { checkFile, deleteAttachment, downloadHref, formatBytes, postRecordAction, recordData, toServerError, uploadAttachment } from './api.js';
 
 const MAX_LENGTH = 5000;
+const MAX_ATTACHMENTS = 5;
 
 /**
  * Comments inside the ticket page: a page of the thread, an "add" box and in-place editing, all without
@@ -73,6 +74,34 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
       await load(Math.max(1, Math.ceil(fresh.total / fresh.perPage)));
     });
 
+  /** Uploads and deletions report their own errors in the same place as comment errors. */
+  const attach = (commentId: string, file: File | undefined) => {
+    if (!file) return Promise.resolve();
+    const problem = checkFile(file);
+    if (problem) {
+      setError(problem);
+      return Promise.resolve();
+    }
+    return run(async () => {
+      try {
+        await uploadAttachment(commentId, file);
+      } catch (e) {
+        throw { response: { data: { message: e instanceof Error ? e.message : undefined } } };
+      }
+      await load(page);
+    });
+  };
+
+  const detach = (attachmentId: string) =>
+    run(async () => {
+      try {
+        await deleteAttachment(attachmentId);
+      } catch (e) {
+        throw { response: { data: { message: e instanceof Error ? e.message : undefined } } };
+      }
+      await load(page);
+    });
+
   const save = (id: string, version: number) =>
     run(async () => {
       await postRecordAction('Ticket', ticketId, 'editComment', { commentId: id, version, body: editDraft });
@@ -130,6 +159,44 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
             // A text node: React escapes it, so markup in a comment is shown, never executed.
             <Box mt="sm" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {c.body}
+            </Box>
+          )}
+
+          {(c.attachments.length > 0 || c.canAttach) && (
+            <Box mt="default">
+              {c.attachments.map((a) => (
+                <Box key={a.id} flex alignItems="center" mb="sm">
+                  {/* Goes through our authorization, then to a 60-second storage URL that downloads the file. */}
+                  <a href={downloadHref(a.id)} rel="noreferrer">
+                    {a.name}
+                  </a>
+                  <Text as="span" variant="sm" ml="default">
+                    {formatBytes(a.size)}
+                  </Text>
+                  {c.canDeleteAttachments && (
+                    <Button type="button" size="sm" ml="default" disabled={busy} onClick={() => void detach(a.id)}>
+                      Remove
+                    </Button>
+                  )}
+                </Box>
+              ))}
+              {c.canAttach && (
+                <Box>
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.pdf,.txt"
+                    disabled={busy}
+                    aria-label={`Attach a file to the comment by ${c.authorName}`}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      void attach(c.id, e.target.files?.[0]);
+                      e.target.value = ''; // allows choosing the same file again
+                    }}
+                  />
+                  <Text as="span" variant="sm" ml="default">
+                    {c.attachments.length} / {MAX_ATTACHMENTS} files, up to 5 MB each (PNG, JPEG, PDF, TXT)
+                  </Text>
+                </Box>
+              )}
             </Box>
           )}
         </Box>

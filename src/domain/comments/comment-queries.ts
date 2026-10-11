@@ -4,6 +4,7 @@ import { loadScope } from '../db.js';
 import { NotFoundError } from '../errors.js';
 import { canAddComment, canEditComment } from '../../policies/comment-policy.js';
 import { type Actor, ticketScopeWhere } from '../../policies/ticket-policy.js';
+import { MAX_ATTACHMENTS_PER_COMMENT } from '../attachments/attachment-service.js';
 
 const PAGE_SIZE = 10;
 
@@ -17,6 +18,12 @@ export interface CommentItem {
   edited: boolean;
   /** Computed for this viewer and this ticket status; the server checks again on save. */
   canEdit: boolean;
+  /** Only finished uploads (READY) are listed. */
+  attachments: Array<{ id: string; name: string; size: number; contentType: string }>;
+  /** Editing rights and room for one more (pending uploads count towards the limit). */
+  canAttach: boolean;
+  /** Same people who may edit the comment may remove its files. */
+  canDeleteAttachments: boolean;
 }
 
 export interface CommentsPage {
@@ -49,7 +56,10 @@ export class CommentQueries {
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         skip: (pageNo - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
-        include: { author: { select: { displayName: true } } },
+        include: {
+          author: { select: { displayName: true } },
+          attachments: { where: { state: { in: ['PENDING', 'READY'] } }, orderBy: { createdAt: 'asc' } },
+        },
       }),
     ]);
     return {
@@ -61,6 +71,9 @@ export class CommentQueries {
         createdAt: c.createdAt.toISOString(),
         edited: c.version > 1,
         canEdit: canEditComment(actor, c.authorUserId, ticket.status.code),
+        attachments: c.attachments.filter((a) => a.state === 'READY').map((a) => ({ id: a.id, name: a.originalName, size: a.sizeBytes, contentType: a.contentType })),
+        canAttach: canEditComment(actor, c.authorUserId, ticket.status.code) && c.attachments.length < MAX_ATTACHMENTS_PER_COMMENT,
+        canDeleteAttachments: canEditComment(actor, c.authorUserId, ticket.status.code),
       })),
       total,
       page: pageNo,
