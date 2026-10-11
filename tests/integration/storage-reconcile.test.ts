@@ -43,7 +43,7 @@ async function setup() {
   const row = async (state: 'PENDING' | 'READY' | 'FAILED' | 'DELETING', opts: { createdAt: Date; withObject?: boolean }) => {
     const objectKey = keyOf(randomUUID());
     const attachment = await prisma.attachment.create({
-      data: { commentId: comment.id, bucket: storage.bucket, objectKey, originalName: 'f.txt', contentType: 'text/plain', sizeBytes: 3, sha256: 'a'.repeat(64), state, createdByUserId: author.user.id, createdAt: opts.createdAt },
+      data: { commentId: comment.id, bucket: storage.bucket, objectKey, originalName: 'f.txt', contentType: 'text/plain', sizeBytes: 3, sha256: 'a'.repeat(64), state, createdByUserId: author.user.id, createdAt: opts.createdAt, stateChangedAt: opts.createdAt },
     });
     if (opts.withObject ?? true) {
       await storage.put(objectKey, Buffer.from('abc'), 'text/plain');
@@ -75,7 +75,10 @@ describe('storage:reconcile', () => {
     await reconcile(prisma, s.storage, { dryRun: false, now });
     expect(await prisma.attachment.findUnique({ where: { id: stale.id } })).not.toBeNull();
 
-    const second = await reconcile(prisma, s.storage, { dryRun: false, now });
+    // FAILED is aged from the moment it was marked, so it is removed an hour later, not in the next minute
+    const soon = await reconcile(prisma, s.storage, { dryRun: false });
+    expect(soon.staleFailed).not.toContain(stale.id);
+    const second = await reconcile(prisma, s.storage, { dryRun: false, now: new Date(Date.now() + 2 * HOUR) });
     expect(second.staleFailed).toContain(stale.id);
     expect(await prisma.attachment.findUnique({ where: { id: stale.id } })).toBeNull();
   });
@@ -175,6 +178,25 @@ describe('storage:reconcile', () => {
     expect(third.staleDeleting).not.toContain(stale.id); // nothing left to do for it
   });
 
+  it('ages a row from its last state change: an old file that was only just being deleted is left alone', async () => {
+    const s = await setup();
+    const service = new AttachmentService(prisma, s.storage);
+    const png = { originalName: 'a.png', declaredType: 'image/png', data: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('x')]) };
+    const file = await service.upload(s.author.actor, s.comment.id, png);
+    await prisma.attachment.update({ where: { id: file.id }, data: { createdAt: old } }); // uploaded long ago
+    s.storage.age(file.objectKey, old);
+    s.storage.failNext.delete = new Error('provider down');
+    await expect(service.remove(s.author.actor, file.id)).rejects.toThrow(); // now DELETING, interrupted a moment ago
+
+    const report = await reconcile(prisma, s.storage, { dryRun: false }); // real clock
+    expect(report.staleDeleting).not.toContain(file.id);
+    expect((await prisma.attachment.findUniqueOrThrow({ where: { id: file.id } })).state).toBe('DELETING');
+
+    const later = await reconcile(prisma, s.storage, { dryRun: false, now: new Date(Date.now() + 2 * HOUR) });
+    expect(later.staleDeleting).toContain(file.id); // an hour after the interruption it is finished
+    expect(await prisma.attachment.findUnique({ where: { id: file.id } })).toBeNull();
+  });
+
   it('cleans up after a real crash: a PENDING row whose upload never finished', async () => {
     const s = await setup();
     const storage = s.storage;
@@ -182,7 +204,7 @@ describe('storage:reconcile', () => {
     // simulate: the row was reserved, the process died before (or after) the put
     const png = { originalName: 'a.png', declaredType: 'image/png', data: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('x')]) };
     const done = await service.upload(s.author.actor, s.comment.id, png);
-    await prisma.attachment.update({ where: { id: done.id }, data: { state: 'PENDING', createdAt: old } });
+    await prisma.attachment.update({ where: { id: done.id }, data: { state: 'PENDING', createdAt: old, stateChangedAt: old } });
     storage.age(done.objectKey, old);
 
     const report = await reconcile(prisma, storage, { dryRun: false, now });
