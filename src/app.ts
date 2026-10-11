@@ -21,6 +21,7 @@ import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
 import { AttachmentService } from './domain/attachments/attachment-service.js';
+import { limitBulkSelection } from './http/bulk-limits.js';
 import { createAttachmentRouter } from './http/routes/attachments.js';
 import { discardBody } from './http/upload-limits.js';
 import type { ObjectStorage } from './storage/storage.js';
@@ -126,13 +127,18 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   // have already run; the upload route itself parses with bounded memory buffers.
   app.use('/internal', requireUser(prisma, env), createAttachmentRouter(new AttachmentService(prisma, storage), env.MAX_CONCURRENT_UPLOADS));
 
-  app.use(admin.options.rootPath, requireUser(prisma, env), AdminJSExpress.buildRouter(admin));
+  app.use(admin.options.rootPath, requireUser(prisma, env), limitBulkSelection, AdminJSExpress.buildRouter(admin));
 
   // Domain errors keep their HTTP status; anything else is a 500. Never leak stack traces, URLs or secrets.
   const onError: ErrorRequestHandler = (err, req, res, _next) => {
     discardBody(req); // an error may answer before an upload body has been read
     if (err instanceof DomainError) {
       res.status(err.status).json({ error: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
+      return;
+    }
+    // AdminJS answers a selection it cannot load (every id unknown or out of scope) with its own NotFoundError.
+    if (err instanceof Error && err.name === 'NotFoundError') {
+      res.status(404).json({ error: 'not_found', message: 'record not found' });
       return;
     }
     // Error messages (Prisma in particular) can embed submitted data, so log only the error type and code.

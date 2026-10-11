@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { loadScope } from '../db.js';
 import { ForbiddenError, NotFoundError } from '../errors.js';
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
+import { assertBatchSize } from './schemas.js';
 import { type StatusCode, STATUS_CODES, allowedTargets, findTransition, isFrozen, isStatusCode } from './workflow.js';
 
 const uuid = z.uuid();
@@ -29,6 +30,14 @@ export interface HistoryItem {
   actor: string;
   reason: string | null;
   changes: HistoryChange[];
+}
+
+/** What the bulk status form needs: the selected tickets as they are now, and the changes valid for all of them. */
+export interface BulkFormState {
+  tickets: Array<{ id: string; number: number; subject: string; version: number; statusCode: string; statusName: string; assigned: boolean }>;
+  /** Selected ids that are unknown or out of scope (not named, so existence is not disclosed). */
+  unavailable: number;
+  targets: Array<{ code: StatusCode; name: string; reason: 'required' | 'optional'; resolution: boolean; unresolvedReason: boolean; /** The change needs an assignee, so tickets without one would be refused. */ needsAssignee: boolean }>;
 }
 
 export interface FormState {
@@ -151,6 +160,47 @@ export class TicketQueries {
       targets,
       groups,
       agents: agents.map((a) => ({ id: a.id, name: a.displayName })),
+    };
+  }
+
+  /**
+   * The selected tickets with their current versions (the form sends them back so concurrent edits are
+   * detected) and the target statuses this actor may apply to every one of them. Whatever the form offers,
+   * the service checks each ticket again.
+   */
+  async bulkFormState(actor: Actor, ticketIds: string[]): Promise<BulkFormState> {
+    const distinct = [...new Set(ticketIds)];
+    assertBatchSize(distinct.length);
+    const valid = distinct.filter((id) => uuid.safeParse(id).success);
+    const scope = await loadScope(this.prisma, actor);
+    const rows = await this.prisma.ticket.findMany({
+      where: { AND: [{ id: { in: valid } }, ticketScopeWhere(scope)] },
+      include: { status: true },
+      orderBy: { number: 'asc' },
+    });
+
+    const codes = [...new Set(rows.map((r) => r.status.code))].filter(isStatusCode);
+    const statusRows = await this.prisma.ticketStatus.findMany({ where: { code: { in: [...STATUS_CODES] } } });
+    const names = new Map(statusRows.map((s) => [s.code, s.name]));
+    const offered = new Set(statusRows.filter((s) => s.isActive).map((s) => s.code));
+    const common = codes.length === 0 ? [] : codes.map((c) => allowedTargets(c, isAdmin(actor))).reduce((a, b) => a.filter((t) => b.includes(t)));
+
+    return {
+      tickets: rows.map((r) => ({ id: r.id, number: r.number, subject: r.subject, version: r.version, statusCode: r.status.code, statusName: r.status.name, assigned: r.assignedAgentId !== null })),
+      unavailable: new Set(ticketIds).size - rows.length,
+      targets: common
+        .filter((to) => offered.has(to))
+        .map((to) => {
+          const rules = codes.map((c) => findTransition(c, to)!);
+          return {
+            code: to,
+            name: names.get(to) ?? to,
+            reason: rules.some((r) => r.reason === 'required') ? ('required' as const) : ('optional' as const),
+            resolution: rules.some((r) => r.resolution),
+            unresolvedReason: rules.some((r) => r.unresolvedReason),
+            needsAssignee: rules.some((r) => r.assignee !== 'none'),
+          };
+        }),
     };
   }
 

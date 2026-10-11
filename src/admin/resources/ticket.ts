@@ -1,8 +1,8 @@
-import type { ResourceWithOptions } from 'adminjs';
+import type { ActionContext, ActionRequest, ResourceWithOptions } from 'adminjs';
 import { getModelByName } from '@adminjs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { loadScope } from '../../domain/db.js';
-import { ValidationError } from '../../domain/errors.js';
+import { NotFoundError, ValidationError } from '../../domain/errors.js';
 import { formatAge, ticketAgeMs } from '../../domain/tickets/age.js';
 import type { CommentQueries } from '../../domain/comments/comment-queries.js';
 import type { CommentService } from '../../domain/comments/comment-service.js';
@@ -118,6 +118,27 @@ export function ticketResource(
             ),
           ),
           icon: 'Shuffle',
+        },
+        // Selection comes from the list (recordIds in the query); the form sends id/version pairs back and the
+        // service re-checks scope, version and the workflow for every ticket, all in one transaction.
+        bulkChangeStatus: {
+          actionType: 'bulk' as const,
+          icon: 'Shuffle',
+          component: Components.BulkChangeStatusForm,
+          showInDrawer: false,
+          handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
+            const actor = actorFromContext(context);
+            if (request.method === 'get') {
+              const records = context.records ?? [];
+              if (records.length === 0) throw new NotFoundError('ticket');
+              // The ids as selected, not as AdminJS loaded them, so ids that are out of scope are counted as unavailable.
+              const ids = (query(request, 'recordIds') ?? '').split(',').filter(Boolean);
+              // AdminJS needs the records themselves to open the page; the form reads the rest of this response itself.
+              return { records: records.map((r) => r.toJSON(context.currentAdmin)), ...(await queries.bulkFormState(actor, ids)) };
+            }
+            const result = await tickets.bulkChangeStatus(actor, request.payload);
+            return { records: [], ok: true, ...result };
+          },
         },
         assignTicket: {
           ...formAction(Components.AssignForm, (context, request, p) =>
