@@ -61,6 +61,19 @@ docker run --rm -e SMOKE_BASE_URL=https://... -e SMOKE_ADMIN_EMAIL=... -e SMOKE_
 
 The commands behind the npm scripts are compiled into the image as `dist/cli/*.js`. CI builds the image, runs it against PostgreSQL and smoke-tests it with both roles; `deploy` publishes it to GHCR and `storage-reconcile` runs nightly once enabled. Details: D-018.
 
+## Production on Supabase
+
+One-time setup (details and reasons: D-020). Passwords and keys live only in the host's secret store, in the GitHub environment `production` and in a git-ignored local file (for example `.env.production.local`); never in the repository or in chat.
+
+1. **Supabase dashboard.** Create the private bucket `ticket-attachments`. Under *Settings > API > Exposed schemas* keep only `public` (the schema `support` must not be exposed). Under *Settings > Database* copy the **session pooler** connection string (port 5432) and download the **SSL certificate**.
+2. **Database roles**, once, with the project owner's connection (generate two different passwords of 24+ characters and keep them):
+   ```
+   ADMIN_DATABASE_URL=postgresql://postgres:...@HOST:5432/postgres MIGRATOR_PASSWORD=... RUNTIME_PASSWORD=... npm run db:provision
+   ```
+   It creates `migrator` (owns the schema, migrations only) and `app_runtime` (rows only, no DDL), verifies the result and prints no password.
+3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*` and `DEPLOY_HOOK_URL`; variable `PRODUCTION_URL`. On the Docker host: `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
+4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, hook, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
+
 ## Demo data
 
 ```
