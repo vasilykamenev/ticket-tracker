@@ -25,6 +25,7 @@
     "seed:verify": "tsx --env-file-if-exists=.env src/cli/seed-verify.ts",
     "seed:reset": "tsx --env-file-if-exists=.env src/cli/seed-reset.ts",
     "admin:create": "tsx --env-file-if-exists=.env src/cli/admin-create.ts",
+    "db:provision": "tsx --env-file-if-exists=.env src/cli/db-provision.ts",
     "storage:reconcile": "tsx --env-file-if-exists=.env src/cli/storage-reconcile.ts",
     "storage:check": "tsx --env-file-if-exists=.env src/cli/storage-check.ts"
   },
