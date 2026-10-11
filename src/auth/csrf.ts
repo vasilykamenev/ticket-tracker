@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
+import { discardBody } from '../http/upload-limits.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -31,6 +32,7 @@ export function csrfProtection(publicUrl: string): RequestHandler {
     const sent = req.get('x-csrf-token') ?? fromBody;
     const expected = req.session.csrfToken;
     if (req.get('origin') !== allowedOrigin || !sent || !expected || !safeEqual(sent, expected)) {
+      discardBody(req);
       res.status(403).json({ error: 'forbidden' });
       return;
     }

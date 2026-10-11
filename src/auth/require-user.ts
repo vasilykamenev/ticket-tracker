@@ -1,6 +1,7 @@
 import type { Agent, PrismaClient, User } from '@prisma/client';
 import type { Request, RequestHandler, Response } from 'express';
 import type { Env } from '../config/env.js';
+import { discardBody } from '../http/upload-limits.js';
 import type { SessionUser } from '../types/express-session.js';
 
 export type UserWithAgent = User & { agent: Agent | null };
@@ -21,10 +22,11 @@ export function canSignIn(user: UserWithAgent): boolean {
 }
 
 function wantsJson(req: Request): boolean {
-  return req.originalUrl.startsWith('/admin/api') || req.get('accept')?.includes('application/json') === true;
+  return req.originalUrl.startsWith('/admin/api') || req.originalUrl.startsWith('/internal') || req.get('accept')?.includes('application/json') === true;
 }
 
 function reject(req: Request, res: Response): void {
+  discardBody(req);
   req.session.destroy(() => {
     res.clearCookie('sid');
     if (wantsJson(req)) res.status(401).json({ error: 'unauthenticated' });

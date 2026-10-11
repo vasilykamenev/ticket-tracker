@@ -64,6 +64,14 @@ export async function lockTicket(tx: Tx, ticketId: string, mode: LockMode): Prom
 }
 
 /**
+ * Serializes concurrent uploads to one comment so the per-comment attachment limit cannot be exceeded.
+ * Always taken after the ticket lock (ticket, then comment) so the two cannot deadlock.
+ */
+export async function lockComment(tx: Tx, commentId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM support."Comment" WHERE id = ${commentId}::uuid FOR UPDATE`;
+}
+
+/**
  * Locks every active ADMIN row (in id order, so concurrent callers cannot deadlock) and returns their
  * ids. Anything that could remove an active administrator takes this lock first, so two concurrent
  * demotions cannot each see "someone else is still an admin".

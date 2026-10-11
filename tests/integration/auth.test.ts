@@ -7,6 +7,7 @@ import { buildApp } from '../../src/app.js';
 import { hashPassword } from '../../src/auth/password.js';
 import { createSessionPool } from '../../src/auth/session.js';
 import { loadEnv } from '../../src/config/env.js';
+import { MemoryStorage } from '../../src/storage/memory-storage.js';
 import type { Env } from '../../src/config/env.js';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -33,7 +34,7 @@ const userIds: string[] = [];
 
 async function makeApp(overrides: Record<string, string> = {}): Promise<express.Express> {
   const env: Env = loadEnv({ ...baseEnv, ...overrides });
-  const app = await buildApp({ env, prisma, sessionPool: pool });
+  const app = await buildApp({ env, prisma, sessionPool: pool, storage: new MemoryStorage() });
   apps.push(app);
   return app;
 }
@@ -98,6 +99,14 @@ describe('health', () => {
     const live = await request(app).get('/health/live').expect(200);
     expect(live.headers['set-cookie']).toBeUndefined();
     await request(app).get('/health/ready').expect(200);
+  });
+});
+
+describe('root address', () => {
+  it('sends the bare address to the admin panel without creating a session', async () => {
+    const res = await request(app).get('/').redirects(0).expect(302);
+    expect(res.headers.location).toBe('/admin');
+    expect(res.headers['set-cookie']).toBeUndefined();
   });
 });
 

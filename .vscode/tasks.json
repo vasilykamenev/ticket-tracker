@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "npm",
+      "script": "build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$tsc",
+      "detail": "Compiles src/ to dist/. The admin UI components are bundled from dist/, so the web server needs a fresh build."
+    },
+    {
+      "label": "database: apply migrations and seed statuses",
+      "type": "shell",
+      "command": "npx prisma migrate deploy && npm run seed:reference",
+      "problemMatcher": [],
+      "detail": "Run once after the local database is up (and after pulling new migrations)."
+    },
+    {
+      "label": "create the first administrator",
+      "type": "shell",
+      "command": "npm run admin:create -- --email admin@example.test",
+      "problemMatcher": [],
+      "detail": "Asks for a password in the terminal (never passed as an argument)."
+    }
+  ]
+}

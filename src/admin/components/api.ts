@@ -36,3 +36,47 @@ export function adminRoot(): string {
 export function ticketUrl(ticketId: string): string {
   return `${adminRoot()}/resources/Ticket/records/${ticketId}/show`;
 }
+
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'pdf', 'txt'];
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Friendly pre-check before sending; the server checks size, type and content again and is the authority. */
+export function checkFile(file: File): string | null {
+  const extension = file.name.includes('.') ? (file.name.split('.').pop() ?? '').toLowerCase() : '';
+  if (!ALLOWED_EXTENSIONS.includes(extension)) return 'Only PNG, JPEG, PDF and plain text (.txt) files can be attached.';
+  if (file.size === 0) return 'The file is empty.';
+  if (file.size > MAX_UPLOAD_BYTES) return `The file is ${formatBytes(file.size)}; the limit is 5 MB.`;
+  return null;
+}
+
+async function failureMessage(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as { message?: string };
+    if (data.message) return data.message;
+  } catch {
+    // not JSON
+  }
+  return response.status === 413 ? 'The file is too large.' : 'The request failed. Please try again.';
+}
+
+/** The CSRF header is added to these same-origin fetches by public/csrf-client.js. */
+export async function uploadAttachment(commentId: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`/internal/comments/${commentId}/attachments`, { method: 'POST', body: form, credentials: 'same-origin' });
+  if (!response.ok) throw new Error(await failureMessage(response));
+}
+
+export async function deleteAttachment(attachmentId: string): Promise<void> {
+  const response = await fetch(`/internal/attachments/${attachmentId}`, { method: 'DELETE', credentials: 'same-origin' });
+  if (!response.ok) throw new Error(await failureMessage(response));
+}
+
+/** Opens through our own authorization, which then redirects to a short-lived storage URL. */
+export const downloadHref = (attachmentId: string) => `/internal/attachments/${attachmentId}/download`;

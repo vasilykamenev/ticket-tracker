@@ -20,6 +20,10 @@ import { customerResource } from './admin/resources/customer.js';
 import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
+import { AttachmentService } from './domain/attachments/attachment-service.js';
+import { createAttachmentRouter } from './http/routes/attachments.js';
+import { discardBody } from './http/upload-limits.js';
+import type { ObjectStorage } from './storage/storage.js';
 import { CommentQueries } from './domain/comments/comment-queries.js';
 import { CommentService } from './domain/comments/comment-service.js';
 import { GroupQueries } from './domain/groups/group-queries.js';
@@ -41,6 +45,7 @@ export interface AppDeps {
   env: Env;
   prisma: PrismaClient;
   sessionPool: pg.Pool;
+  storage: ObjectStorage;
 }
 
 function buildAdmin(prisma: PrismaClient): AdminJS {
@@ -82,7 +87,7 @@ function buildAdmin(prisma: PrismaClient): AdminJS {
   });
 }
 
-export async function buildApp({ env, prisma, sessionPool }: AppDeps): Promise<express.Express> {
+export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): Promise<express.Express> {
   const admin = buildAdmin(prisma);
   // The bundle is built only when serving real traffic; tests exercise the JSON API.
   if (env.APP_ENV === 'production' || env.APP_ENV === 'demo') await admin.initialize();
@@ -105,6 +110,11 @@ export async function buildApp({ env, prisma, sessionPool }: AppDeps): Promise<e
     }
   });
 
+  // The application lives under /admin; the bare address would otherwise be an empty 404 page.
+  app.get('/', (_req, res) => {
+    res.redirect(302, admin.options.rootPath);
+  });
+
   app.use(createSessionMiddleware(env, sessionPool));
   app.get('/auth/csrf-client.js', (_req, res) => {
     res.type('application/javascript').sendFile(path.join(publicDir, 'csrf-client.js'));
@@ -112,11 +122,15 @@ export async function buildApp({ env, prisma, sessionPool }: AppDeps): Promise<e
   app.use('/auth', authFormParser);
   app.use(csrfProtection(env.PUBLIC_URL));
   app.use('/auth', createAuthRouter(prisma, env));
+  // Mounted before AdminJS, whose body parser would otherwise see uploads. Session, CSRF and authentication
+  // have already run; the upload route itself parses with bounded memory buffers.
+  app.use('/internal', requireUser(prisma, env), createAttachmentRouter(new AttachmentService(prisma, storage), env.MAX_CONCURRENT_UPLOADS));
 
   app.use(admin.options.rootPath, requireUser(prisma, env), AdminJSExpress.buildRouter(admin));
 
   // Domain errors keep their HTTP status; anything else is a 500. Never leak stack traces, URLs or secrets.
-  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+  const onError: ErrorRequestHandler = (err, req, res, _next) => {
+    discardBody(req); // an error may answer before an upload body has been read
     if (err instanceof DomainError) {
       res.status(err.status).json({ error: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
       return;
