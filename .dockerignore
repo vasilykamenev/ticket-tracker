@@ -1,12 +1,19 @@
-node_modules
-dist
+# Nothing here may reach the build context: secrets, history, local state, tests and documentation.
 .git
 .github
+.vscode
 .env
 .env.*
 !.env.example
-tests
-docs
+node_modules
+dist
+.adminjs
+.devdb
 coverage
 playwright-report
+test-results
+tests
+docs
+scripts
+seed
 *.log

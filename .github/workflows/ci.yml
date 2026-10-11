@@ -35,3 +35,95 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Builds the production image and runs it against a real PostgreSQL: the same image that deploy.yml publishes.
+  docker:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tickets
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IMAGE: support-ticket-tracker:ci
+      # The containers share the runner's network, so the service is reached as localhost.
+      DB_URL: postgresql://postgres:postgres@localhost:5432/tickets?schema=support
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: The image is pinned, unprivileged and carries no secrets, tests or dev tools
+        run: |
+          docker run --rm --entrypoint sh "$IMAGE" -c '
+            set -e
+            test "$(node -v)" = "v22.23.2"
+            test "$(id -u)" != "0"
+            test ! -e .env
+            test ! -d tests
+            test ! -d docs
+            test ! -e node_modules/.bin/tsx
+            test -f .adminjs/bundle.js
+          '
+
+      - name: Migrate the database and seed the reference data
+        run: |
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" -e DIRECT_URL="$DB_URL" "$IMAGE" npx prisma migrate deploy
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" "$IMAGE" node dist/cli/seed-reference.js
+
+      - name: Create the administrator
+        run: |
+          password="$(openssl rand -base64 24)"
+          echo "::add-mask::$password"
+          echo "SMOKE_ADMIN_PASSWORD=$password" >> "$GITHUB_ENV"
+          docker run --rm --network host -e DATABASE_URL="$DB_URL" -e ADMIN_PASSWORD="$password" "$IMAGE" \
+            node dist/cli/admin-create.js --email smoke-admin@example.test --name "Smoke Admin"
+
+      - name: Start the application
+        run: |
+          # APP_ENV=demo is the deployed mode that works over plain HTTP; the S3 values only satisfy the
+          # configuration check (the smoke test does not upload).
+          docker run -d --name app --network host \
+            -e APP_ENV=demo -e PORT=3000 -e PUBLIC_URL=http://localhost:3000 \
+            -e SESSION_SECRET="$(openssl rand -hex 32)" -e DATABASE_URL="$DB_URL" \
+            -e S3_ENDPOINT=http://127.0.0.1:9 -e S3_REGION=us-east-1 -e S3_BUCKET=ci \
+            -e S3_ACCESS_KEY_ID=ci -e S3_SECRET_ACCESS_KEY=ci-not-used \
+            "$IMAGE"
+          for i in $(seq 1 60); do curl -fsS http://localhost:3000/health/ready >/dev/null && break; sleep 1; done
+          curl -fsS http://localhost:3000/health/ready
+
+      - name: Smoke test with both roles (ADMIN creates, AGENT works the ticket)
+        run: |
+          docker run --rm --network host \
+            -e SMOKE_BASE_URL=http://localhost:3000 \
+            -e SMOKE_ADMIN_EMAIL=smoke-admin@example.test -e SMOKE_ADMIN_PASSWORD="$SMOKE_ADMIN_PASSWORD" \
+            "$IMAGE" node dist/cli/smoke.js --write
+
+      - name: The container reports healthy
+        run: |
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' app)"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 3
+          done
+          echo "health status: $status"
+          exit 1
+
+      - name: Application log
+        if: always()
+        run: docker logs app 2>&1 | tail -n 60
