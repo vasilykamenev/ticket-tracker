@@ -5,7 +5,7 @@ import { type BulkFailure, BulkRejectedError, ConflictError, DomainError, Forbid
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
 import {
   assignTicketSchema,
-  BULK_MAX_TICKETS,
+  assertBatchSize,
   bulkChangeStatusSchema,
   changeStatusSchema,
   createTicketSchema,
@@ -20,6 +20,21 @@ export type TicketWithStatus = Ticket & { status: TicketStatus };
 type HistoryKind = 'CREATED' | 'UPDATED' | 'ASSIGNED' | 'STATUS_CHANGED';
 
 const uuid = z.uuid();
+
+/** A bulk change runs about eight queries per ticket in one transaction; the default 5 s is far too short for 100 tickets. */
+const BULK_TRANSACTION_TIMEOUT_MS = 30_000;
+const BULK_TRANSACTION_MAX_WAIT_MS = 5_000;
+
+export interface BulkChanged {
+  id: string;
+  number: number;
+  status: string;
+}
+
+/** What a bulk change looks up once instead of once per ticket. Its presence means the target status is locked and active. */
+interface BulkPrepared {
+  statusIds: Record<StatusCode, string>;
+}
 
 /** Dates become ISO strings so snapshots are plain JSON. */
 function snapshot(t: TicketWithStatus): Prisma.InputJsonValue {
@@ -154,11 +169,12 @@ export class TicketService {
    * rules as a single change (scope, version, workflow, outcome fields, history). The whole batch is tried so
    * the operator sees every refused ticket at once; any refusal rolls everything back.
    */
-  async bulkChangeStatus(actor: Actor, input: unknown): Promise<{ changed: Array<{ id: string; number: number; status: string }> }> {
-    // Size and shape are checked before the database is touched.
+  async bulkChangeStatus(actor: Actor, input: unknown): Promise<{ changed: BulkChanged[] }> {
+    // Duplicates are merged first, then the size is checked: both before the database is touched.
     const raw = (input ?? {}) as { items?: unknown };
-    if (Array.isArray(raw.items) && raw.items.length > BULK_MAX_TICKETS) {
-      throw new ValidationError('batch_too_large', `Select at most ${BULK_MAX_TICKETS} tickets at a time`, { items: `at most ${BULK_MAX_TICKETS} tickets` });
+    if (Array.isArray(raw.items)) {
+      const ids = raw.items.map((item, at) => (typeof (item as { id?: unknown } | null)?.id === 'string' ? (item as { id: string }).id : `#${at}`));
+      assertBatchSize(new Set(ids).size);
     }
     const data = parseInput(bulkChangeStatusSchema, input);
     if (data.targetStatus === 'UNRESOLVED' && data.confirmSharedReason !== true) {
@@ -182,11 +198,19 @@ export class TicketService {
         const visible = await tx.ticket.findMany({ where: { AND: [{ id: { in: ids } }, ticketScopeWhere(scope)] }, select: { id: true, number: true } });
         const numbers = new Map(visible.map((t) => [t.id, t.number]));
 
+        // Looked up and locked once for the batch instead of once per ticket.
+        const statusIds = await this.statusIds(tx);
+        const target = await lockStatus(tx, statusIds[data.targetStatus], 'share');
+        if (!target?.isActive) {
+          throw new ValidationError('validation', 'Invalid input', { targetStatus: 'this status has been deactivated by an administrator' });
+        }
+        const prepared: BulkPrepared = { statusIds };
+
         const failures: BulkFailure[] = [];
-        const changed: Array<{ id: string; number: number; status: string }> = [];
+        const changed: BulkChanged[] = [];
         for (const id of ids) {
           try {
-            const updated = await this.changeStatusInTx(tx, actor, scope, id, versions.get(id)!, change);
+            const updated = await this.changeStatusInTx(tx, actor, scope, id, versions.get(id)!, change, prepared);
             changed.push({ id, number: updated.number, status: updated.status.code });
           } catch (err) {
             if (!(err instanceof DomainError)) throw err; // unexpected: roll back and surface as a server error
@@ -196,12 +220,20 @@ export class TicketService {
         if (failures.length > 0) throw new BulkRejectedError(failures); // rolls the whole transaction back
         return { changed };
       },
-      { timeout: 30_000, maxWait: 5_000 },
+      { timeout: BULK_TRANSACTION_TIMEOUT_MS, maxWait: BULK_TRANSACTION_MAX_WAIT_MS },
     );
   }
 
   /** Shared by changeStatus and the all-or-nothing bulk action. */
-  async changeStatusInTx(tx: Tx, actor: Actor, scope: Scope, ticketId: string, expectedVersion: number, input: unknown): Promise<TicketWithStatus> {
+  async changeStatusInTx(
+    tx: Tx,
+    actor: Actor,
+    scope: Scope,
+    ticketId: string,
+    expectedVersion: number,
+    input: unknown,
+    prepared?: BulkPrepared,
+  ): Promise<TicketWithStatus> {
     const data = parseInput(changeStatusSchema, input);
     const version = parseInput(versionSchema, expectedVersion);
     const ticket = await this.loadForActor(tx, scope, ticketId);
@@ -234,11 +266,13 @@ export class TicketService {
     }
 
     const outcome = applyOutcome(ticket, data.targetStatus, data, this.now());
-    const statuses = await this.statusIds(tx);
-    // SHARE lock: deactivating a status takes an UPDATE lock and then counts tickets, so one of us waits.
-    const targetStatus = await lockStatus(tx, statuses[data.targetStatus], 'share');
-    if (!targetStatus?.isActive) {
-      throw new ValidationError('validation', 'Invalid input', { targetStatus: 'this status has been deactivated by an administrator' });
+    const statuses = prepared?.statusIds ?? (await this.statusIds(tx));
+    if (!prepared) {
+      // SHARE lock: deactivating a status takes an UPDATE lock and then counts tickets, so one of us waits.
+      const targetStatus = await lockStatus(tx, statuses[data.targetStatus], 'share');
+      if (!targetStatus?.isActive) {
+        throw new ValidationError('validation', 'Invalid input', { targetStatus: 'this status has been deactivated by an administrator' });
+      }
     }
     const updated = await this.bump(tx, ticket, version, {
       status: { connect: { id: statuses[data.targetStatus] } },

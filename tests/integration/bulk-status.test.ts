@@ -138,6 +138,16 @@ describe('bulkChangeStatus', () => {
     }
   });
 
+  it('merges duplicates before it counts: 101 pairs of 100 distinct tickets fit the limit', async () => {
+    const s = await scenario();
+    const distinct = Array.from({ length: 100 }, () => ({ id: crypto.randomUUID(), version: 1 }));
+    const items = [...distinct, distinct[0]!]; // 101 entries, 100 tickets
+    const err = await rejected(tickets.bulkChangeStatus(s.agent.actor, { items, targetStatus: 'IN_PROGRESS' })); // unknown ids: refused one by one, not as "too large"
+    expect(err.failures).toHaveLength(100);
+    const tooMany = await domainError(tickets.bulkChangeStatus(s.agent.actor, { items: [...distinct, { id: crypto.randomUUID(), version: 1 }], targetStatus: 'IN_PROGRESS' }));
+    expect(tooMany.code).toBe('batch_too_large'); // 101 distinct tickets
+  });
+
   it('validates the shape: empty selection, unknown fields and a ticket listed twice with different versions', async () => {
     const s = await scenario();
     const [t] = await s.make(1);

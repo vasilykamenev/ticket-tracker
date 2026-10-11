@@ -1,9 +1,9 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { loadScope } from '../db.js';
-import { ForbiddenError, NotFoundError, ValidationError } from '../errors.js';
+import { ForbiddenError, NotFoundError } from '../errors.js';
 import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } from '../../policies/ticket-policy.js';
-import { BULK_MAX_TICKETS } from './schemas.js';
+import { assertBatchSize } from './schemas.js';
 import { type StatusCode, STATUS_CODES, allowedTargets, findTransition, isFrozen, isStatusCode } from './workflow.js';
 
 const uuid = z.uuid();
@@ -34,10 +34,10 @@ export interface HistoryItem {
 
 /** What the bulk status form needs: the selected tickets as they are now, and the changes valid for all of them. */
 export interface BulkFormState {
-  tickets: Array<{ id: string; number: number; subject: string; version: number; statusCode: string; statusName: string }>;
+  tickets: Array<{ id: string; number: number; subject: string; version: number; statusCode: string; statusName: string; assigned: boolean }>;
   /** Selected ids that are unknown or out of scope (not named, so existence is not disclosed). */
   unavailable: number;
-  targets: Array<{ code: StatusCode; name: string; reason: 'required' | 'optional'; resolution: boolean; unresolvedReason: boolean }>;
+  targets: Array<{ code: StatusCode; name: string; reason: 'required' | 'optional'; resolution: boolean; unresolvedReason: boolean; /** The change needs an assignee, so tickets without one would be refused. */ needsAssignee: boolean }>;
 }
 
 export interface FormState {
@@ -169,10 +169,9 @@ export class TicketQueries {
    * the service checks each ticket again.
    */
   async bulkFormState(actor: Actor, ticketIds: string[]): Promise<BulkFormState> {
-    if (ticketIds.length > BULK_MAX_TICKETS) {
-      throw new ValidationError('batch_too_large', `Select at most ${BULK_MAX_TICKETS} tickets at a time`, { items: `at most ${BULK_MAX_TICKETS} tickets` });
-    }
-    const valid = [...new Set(ticketIds)].filter((id) => uuid.safeParse(id).success);
+    const distinct = [...new Set(ticketIds)];
+    assertBatchSize(distinct.length);
+    const valid = distinct.filter((id) => uuid.safeParse(id).success);
     const scope = await loadScope(this.prisma, actor);
     const rows = await this.prisma.ticket.findMany({
       where: { AND: [{ id: { in: valid } }, ticketScopeWhere(scope)] },
@@ -187,7 +186,7 @@ export class TicketQueries {
     const common = codes.length === 0 ? [] : codes.map((c) => allowedTargets(c, isAdmin(actor))).reduce((a, b) => a.filter((t) => b.includes(t)));
 
     return {
-      tickets: rows.map((r) => ({ id: r.id, number: r.number, subject: r.subject, version: r.version, statusCode: r.status.code, statusName: r.status.name })),
+      tickets: rows.map((r) => ({ id: r.id, number: r.number, subject: r.subject, version: r.version, statusCode: r.status.code, statusName: r.status.name, assigned: r.assignedAgentId !== null })),
       unavailable: new Set(ticketIds).size - rows.length,
       targets: common
         .filter((to) => offered.has(to))
@@ -199,6 +198,7 @@ export class TicketQueries {
             reason: rules.some((r) => r.reason === 'required') ? ('required' as const) : ('optional' as const),
             resolution: rules.some((r) => r.resolution),
             unresolvedReason: rules.some((r) => r.unresolvedReason),
+            needsAssignee: rules.some((r) => r.assignee !== 'none'),
           };
         }),
     };
