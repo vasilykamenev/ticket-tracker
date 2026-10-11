@@ -35,6 +35,8 @@ const base = z.object({
   // Number of reverse proxies in front of the app (0 = none). Set to the real hop count only.
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   DATABASE_URL: z.string().min(1),
+  // PEM text of the CA that signed the database server's certificate (Supabase: Settings, Database, SSL certificate).
+  DATABASE_CA_CERT: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
   SESSION_IDLE_MINUTES: positiveInt(30),
   SESSION_ABSOLUTE_HOURS: positiveInt(8),
