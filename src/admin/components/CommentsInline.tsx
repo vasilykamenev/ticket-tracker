@@ -3,9 +3,9 @@ import { Badge, Box, Button, Label, Loader, MessageBox, Text, TextArea } from '@
 import type { BasePropertyProps } from 'adminjs';
 import type { CommentsPage } from '../../domain/comments/comment-queries.js';
 import { checkFile, deleteAttachment, downloadHref, formatBytes, postRecordAction, recordData, toServerError, uploadAttachment } from './api.js';
+import { ALLOWED_EXTENSIONS, FILE_LIMIT_LABEL, MAX_ATTACHMENTS_PER_COMMENT } from '../../storage/limits.js';
 
 const MAX_LENGTH = 5000;
-const MAX_ATTACHMENTS = 5;
 
 /**
  * Comments inside the ticket page: a page of the thread, an "add" box and in-place editing, all without
@@ -184,7 +184,7 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
                 <Box>
                   <input
                     type="file"
-                    accept=".png,.jpg,.jpeg,.pdf,.txt"
+                    accept={ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',')}
                     disabled={busy}
                     aria-label={`Attach a file to the comment by ${c.authorName}`}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -193,7 +193,7 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
                     }}
                   />
                   <Text as="span" variant="sm" ml="default">
-                    {c.attachments.length} / {MAX_ATTACHMENTS} files, up to 10 MB each (PNG, JPEG, PDF, TXT)
+                    {c.attachments.length} / {MAX_ATTACHMENTS_PER_COMMENT} files, up to {FILE_LIMIT_LABEL} each (PNG, JPEG, PDF, TXT)
                   </Text>
                 </Box>
               )}

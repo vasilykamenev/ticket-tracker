@@ -4,7 +4,7 @@ import { loadScope } from '../db.js';
 import { NotFoundError } from '../errors.js';
 import { canAddComment, canEditComment } from '../../policies/comment-policy.js';
 import { type Actor, ticketScopeWhere } from '../../policies/ticket-policy.js';
-import { MAX_ATTACHMENTS_PER_COMMENT } from '../attachments/attachment-service.js';
+import { MAX_ATTACHMENTS_PER_COMMENT } from '../../storage/limits.js';
 
 const PAGE_SIZE = 10;
 

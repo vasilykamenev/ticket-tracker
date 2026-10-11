@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { BusyError, PayloadTooLargeError } from '../domain/errors.js';
-import { MAX_FILE_BYTES } from '../storage/file-validation.js';
+import { FILE_LIMIT_LABEL, MAX_FILE_BYTES } from '../storage/limits.js';
 
 /** Multipart framing around one file (boundary, headers). Anything bigger than file + this cannot be valid. */
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
@@ -23,7 +23,7 @@ export const rejectOversizedBody: RequestHandler = (req, _res, next) => {
   const length = Number(req.get('content-length'));
   if (Number.isFinite(length) && length > MAX_FILE_BYTES + MULTIPART_OVERHEAD_BYTES) {
     discardBody(req);
-    return next(new PayloadTooLargeError('The file is larger than 10 MiB.'));
+    return next(new PayloadTooLargeError(`The file is larger than ${FILE_LIMIT_LABEL}.`));
   }
   next();
 };

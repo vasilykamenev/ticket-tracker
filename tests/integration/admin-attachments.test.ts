@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import type express from 'express';
 import type { Pool } from 'pg';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CommentService } from '../../src/domain/comments/comment-service.js';
 import { TicketService } from '../../src/domain/tickets/ticket-service.js';
 import type { MemoryStorage } from '../../src/storage/memory-storage.js';
@@ -199,6 +199,42 @@ describe('downloading', () => {
     expect((await (await signIn(app, outsider.user.normalizedEmail)).get(`/internal/attachments/${created.id}/download`).redirects(0)).status).toBe(404);
     expect((await request(app).get(`/internal/attachments/${created.id}/download`).redirects(0)).status).toBe(401);
     expect((await a.get('/internal/attachments/not-a-uuid/download').redirects(0)).status).toBe(404);
+  });
+});
+
+describe('logging', () => {
+  it('never writes download URLs, signatures or provider messages to the logs', async () => {
+    const lines: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void lines.push(args.map(String).join(' '))),
+    );
+    const realPresign = storage.presignGet.bind(storage);
+    try {
+      const { comment } = await target();
+      const a = await signIn(app, author.user.normalizedEmail);
+      const created = (await a.with('post', upload(comment.id)).attach('file', PNG, { filename: 'a.png', contentType: 'image/png' })).body;
+
+      const ok = await a.get(`/internal/attachments/${created.id}/download`).redirects(0);
+      expect(ok.status).toBe(302);
+
+      storage.presignGet = async () => {
+        throw new Error('signing failed for https://secret-host.example/bucket?X-Amz-Signature=abc123');
+      };
+      expect((await a.get(`/internal/attachments/${created.id}/download`).redirects(0)).status).toBe(502);
+      storage.presignGet = realPresign;
+
+      storage.failNext.put = new Error('put failed for https://secret-host.example/bucket?X-Amz-Signature=abc123');
+      const failed = await a.with('post', upload(comment.id)).attach('file', PNG, { filename: 'b.png', contentType: 'image/png' });
+      expect(failed.status).toBe(502);
+
+      const logged = lines.join(' | ');
+      expect(logged).not.toContain('X-Amz-Signature');
+      expect(logged).not.toContain('secret-host');
+      expect(logged).not.toContain(String(ok.headers.location).split('?')[0]);
+    } finally {
+      storage.presignGet = realPresign;
+      spies.forEach((spy) => spy.mockRestore());
+    }
   });
 });
 
