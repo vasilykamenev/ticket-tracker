@@ -135,6 +135,11 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
       res.status(err.status).json({ error: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) });
       return;
     }
+    // AdminJS answers a selection it cannot load (every id unknown or out of scope) with its own NotFoundError.
+    if (err instanceof Error && err.name === 'NotFoundError') {
+      res.status(404).json({ error: 'not_found', message: 'record not found' });
+      return;
+    }
     // Error messages (Prisma in particular) can embed submitted data, so log only the error type and code.
     const code = (err as { code?: unknown } | null)?.code;
     console.error('request failed:', err instanceof Error ? err.name : 'unknown', typeof code === 'string' ? code : '');
