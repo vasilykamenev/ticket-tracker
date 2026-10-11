@@ -188,6 +188,9 @@ model Attachment {
   state           AttachmentState @default(PENDING)
   createdByUserId String          @db.Uuid
   createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  /// When `state` last changed: reconcile ages a row from here, so a long-lived READY file that was just
+  /// moved to DELETING is not mistaken for an abandoned operation.
+  stateChangedAt  DateTime        @default(now()) @db.Timestamptz(6)
 
   comment   Comment @relation(fields: [commentId], references: [id], onDelete: Restrict)
   createdBy User    @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)

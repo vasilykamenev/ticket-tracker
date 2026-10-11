@@ -3,6 +3,7 @@ import type { ObjectStorage } from './storage.js';
 
 export interface ReconcileReport {
   dryRun: boolean;
+  // Ages below are measured from the last state change, not from creation.
   /** PENDING longer than the cutoff: the object is deleted and the row marked FAILED. */
   stalePending: string[];
   /** FAILED longer than the cutoff: the object is deleted and the row removed. */
@@ -38,7 +39,7 @@ export async function reconcile(prisma: PrismaClient, storage: ObjectStorage, op
 
   // Decide everything up front, so rows converted below are not removed in the same run.
   const stale = (state: 'PENDING' | 'FAILED' | 'DELETING') =>
-    prisma.attachment.findMany({ where: { state, createdAt: { lt: cutoff } }, select: { id: true, objectKey: true } });
+    prisma.attachment.findMany({ where: { state, stateChangedAt: { lt: cutoff } }, select: { id: true, objectKey: true } });
   const pending = await stale('PENDING');
   const failed = await stale('FAILED');
   const deleting = await stale('DELETING');
@@ -56,7 +57,7 @@ export async function reconcile(prisma: PrismaClient, storage: ObjectStorage, op
     if (options.dryRun) continue;
     await attempt(`pending ${a.id}`, async () => {
       await storage.delete(a.objectKey);
-      await prisma.attachment.updateMany({ where: { id: a.id, state: 'PENDING' }, data: { state: 'FAILED' } });
+      await prisma.attachment.updateMany({ where: { id: a.id, state: 'PENDING' }, data: { state: 'FAILED', stateChangedAt: new Date() } });
     });
   }
   for (const a of failed) {

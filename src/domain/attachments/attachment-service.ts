@@ -7,8 +7,8 @@ import { canAddComment, canEditComment } from '../../policies/comment-policy.js'
 import { type Actor, canAccessGroup, ticketScopeWhere } from '../../policies/ticket-policy.js';
 import { type ObjectStorage } from '../../storage/storage.js';
 import { type CheckedFile, validateUpload } from '../../storage/file-validation.js';
+import { MAX_ATTACHMENTS_PER_COMMENT } from '../../storage/limits.js';
 
-export const MAX_ATTACHMENTS_PER_COMMENT = 5;
 export const DOWNLOAD_URL_SECONDS = 60;
 
 const uuid = z.uuid();
@@ -49,7 +49,7 @@ export class AttachmentService {
     const ready = await this.prisma.$transaction(async (tx) => {
       const ticket = await lockTicket(tx, (await tx.comment.findUniqueOrThrow({ where: { id: commentId } })).ticketId, 'share');
       if (!ticket || !canAddComment(ticket.statusCode)) return null;
-      const result = await tx.attachment.updateMany({ where: { id: pending.id, state: 'PENDING' }, data: { state: 'READY' } });
+      const result = await tx.attachment.updateMany({ where: { id: pending.id, state: 'PENDING' }, data: { state: 'READY', stateChangedAt: new Date() } });
       return result.count === 1 ? tx.attachment.findUniqueOrThrow({ where: { id: pending.id } }) : null;
     });
     if (!ready) {
@@ -93,7 +93,7 @@ export class AttachmentService {
       if (!canEditComment(actor, found.comment.authorUserId, ticket.statusCode)) {
         throw new ForbiddenError('not_author', 'You can change attachments only on your own comments');
       }
-      await tx.attachment.update({ where: { id: attachmentId }, data: { state: 'DELETING' } });
+      await tx.attachment.update({ where: { id: attachmentId }, data: { state: 'DELETING', stateChangedAt: new Date() } });
       return found;
     });
 
@@ -146,7 +146,7 @@ export class AttachmentService {
 
   /** Marks the row FAILED and tries to remove any object that was written. Never throws. */
   private async discard(attachment: Attachment): Promise<void> {
-    await this.prisma.attachment.updateMany({ where: { id: attachment.id }, data: { state: 'FAILED' } }).catch(() => undefined);
+    await this.prisma.attachment.updateMany({ where: { id: attachment.id }, data: { state: 'FAILED', stateChangedAt: new Date() } }).catch(() => undefined);
     await this.storage.delete(attachment.objectKey).catch(() => undefined); // reconcile retries if this fails
   }
 }

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AttachmentService, DOWNLOAD_URL_SECONDS, MAX_ATTACHMENTS_PER_COMMENT } from '../../src/domain/attachments/attachment-service.js';
+import { AttachmentService, DOWNLOAD_URL_SECONDS } from '../../src/domain/attachments/attachment-service.js';
+import { MAX_ATTACHMENTS_PER_COMMENT } from '../../src/storage/limits.js';
 import { CommentQueries } from '../../src/domain/comments/comment-queries.js';
 import { CommentService } from '../../src/domain/comments/comment-service.js';
 import { DomainError } from '../../src/domain/errors.js';
