@@ -13,6 +13,7 @@ import {
   updateTicketSchema,
   versionSchema,
 } from './schemas.js';
+import { ticketSnapshot as snapshot } from './snapshot.js';
 import { type StatusCode, applyOutcome, findTransition, isFrozen, isStatusCode, STATUS_CODES } from './workflow.js';
 
 export type TicketWithStatus = Ticket & { status: TicketStatus };
@@ -34,25 +35,6 @@ export interface BulkChanged {
 /** What a bulk change looks up once instead of once per ticket. Its presence means the target status is locked and active. */
 interface BulkPrepared {
   statusIds: Record<StatusCode, string>;
-}
-
-/** Dates become ISO strings so snapshots are plain JSON. */
-function snapshot(t: TicketWithStatus): Prisma.InputJsonValue {
-  return JSON.parse(
-    JSON.stringify({
-      subject: t.subject,
-      description: t.description,
-      priority: t.priority,
-      status: t.status.code,
-      groupId: t.groupId,
-      assignedAgentId: t.assignedAgentId,
-      resolution: t.resolution,
-      unresolvedReason: t.unresolvedReason,
-      resolvedAt: t.resolvedAt,
-      unresolvedAt: t.unresolvedAt,
-      closedAt: t.closedAt,
-    }),
-  ) as Prisma.InputJsonValue;
 }
 
 /**

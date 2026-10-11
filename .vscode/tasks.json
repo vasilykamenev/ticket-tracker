@@ -22,6 +22,83 @@
       "command": "npm run admin:create -- --email admin@example.test",
       "problemMatcher": [],
       "detail": "Asks for a password in the terminal (never passed as an argument)."
+    },
+    {
+      "label": "seed: create or complete the demo data",
+      "type": "shell",
+      "command": "npm run seed:demo",
+      "options": {
+        "env": {
+          "SEED_ADMIN_PASSWORD": "${input:seedAdminPassword}",
+          "SEED_AGENT_PASSWORD": "${input:seedAgentPassword}"
+        }
+      },
+      "problemMatcher": [],
+      "detail": "2000 tickets, 10000 comments and 200 files in the S3 bucket from .env. Safe to repeat."
+    },
+    {
+      "label": "seed: verify the demo data",
+      "type": "shell",
+      "command": "npm run seed:verify",
+      "problemMatcher": [],
+      "detail": "Counts, workflow, dates and every file in Storage. Exits with an error and lists what is wrong."
+    },
+    {
+      "label": "seed: reset (dry run, deletes nothing)",
+      "type": "shell",
+      "command": "npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo --dry-run",
+      "options": { "env": { "ALLOW_DEMO_RESET": "true" } },
+      "problemMatcher": [],
+      "detail": "Shows what a reset would remove."
+    },
+    {
+      "label": "seed: reset (delete and recreate the demo data)",
+      "type": "shell",
+      "command": "npm run seed:reset -- --dataset takehome-demo --confirm ${input:resetConfirm}",
+      "options": {
+        "env": {
+          "ALLOW_DEMO_RESET": "true",
+          "SEED_ADMIN_PASSWORD": "${input:seedAdminPassword}",
+          "SEED_AGENT_PASSWORD": "${input:seedAgentPassword}"
+        }
+      },
+      "problemMatcher": [],
+      "detail": "Removes only the demo rows and files, then creates them again. Refused in production."
+    },
+    {
+      "label": "seed: delete the demo data only",
+      "type": "shell",
+      "command": "npm run seed:reset -- --dataset takehome-demo --confirm ${input:resetConfirm} --delete-only",
+      "options": { "env": { "ALLOW_DEMO_RESET": "true" } },
+      "problemMatcher": [],
+      "detail": "Removes the demo rows and files and does not recreate them."
+    },
+    {
+      "label": "demo: migrate, seed statuses and load the demo data",
+      "dependsOn": ["database: apply migrations and seed statuses", "seed: create or complete the demo data"],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "detail": "First-time setup of a running local database with the demo data (asks for the two passwords)."
+    }
+  ],
+  "inputs": [
+    {
+      "id": "seedAdminPassword",
+      "type": "promptString",
+      "description": "Password for the demo administrators (12+ characters, typed hidden, not stored)",
+      "password": true
+    },
+    {
+      "id": "seedAgentPassword",
+      "type": "promptString",
+      "description": "Password for the demo agents (12+ characters, typed hidden, not stored)",
+      "password": true
+    },
+    {
+      "id": "resetConfirm",
+      "type": "promptString",
+      "description": "Type the dataset name to confirm: takehome-demo",
+      "default": ""
     }
   ]
 }
