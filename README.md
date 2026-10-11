@@ -27,7 +27,7 @@ Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at l
 Local staff accounts, Argon2id hashes, PostgreSQL sessions, CSRF token + Origin check, login rate limits per IP and per account (in-memory, single replica). See `docs/decisions.md` D-006..D-008.
 
 ## Layout
-See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `scripts/` the seed/admin/storage commands, `tests/` unit, integration and e2e suites.
+See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `src/cli/` the seed, admin and storage commands (compiled into the image as `dist/cli/*.js`), `tests/` unit, integration and e2e suites.
 
 
 ### Commit messages
@@ -47,6 +47,19 @@ Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/
 | `perf` | Performance improvement |
 | `docs` | Documentation only |
 | `chore` | Maintenance that fits no other type |
+
+## Docker
+
+```
+docker build -t support-ticket-tracker .                                   # pinned Node, prepared AdminJS bundle, runs as `node`
+docker compose up --build                                                  # the image with its own PostgreSQL (migrations run first)
+docker run --rm --env-file prod.env IMAGE npx prisma migrate deploy        # migrations are a separate step (owner role)
+docker run --rm -e ADMIN_PASSWORD=... --env-file prod.env IMAGE node dist/cli/admin-create.js --email admin@example.test
+docker run --rm --env-file prod.env IMAGE node dist/cli/storage-reconcile.js --dry-run
+docker run --rm -e SMOKE_BASE_URL=https://... -e SMOKE_ADMIN_EMAIL=... -e SMOKE_ADMIN_PASSWORD=... [-e SMOKE_AGENT_EMAIL=... -e SMOKE_AGENT_PASSWORD=...] IMAGE node dist/cli/smoke.js
+```
+
+The commands behind the npm scripts are compiled into the image as `dist/cli/*.js`. CI builds the image, runs it against PostgreSQL and smoke-tests it with both roles; `deploy` publishes it to GHCR and `storage-reconcile` runs nightly once enabled. Details: D-018.
 
 ## Demo data
 
