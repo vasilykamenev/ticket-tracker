@@ -1,16 +1,7 @@
 import { PayloadTooLargeError, UnsupportedMediaError } from '../domain/errors.js';
+import { type AllowedType, EXTENSIONS_BY_TYPE, FILE_LIMIT_LABEL, MAX_FILE_BYTES } from './limits.js';
 
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
-
-export type AllowedType = 'image/png' | 'image/jpeg' | 'application/pdf' | 'text/plain';
-
-/** Extensions accepted for each detected type. */
-const EXTENSIONS: Record<AllowedType, readonly string[]> = {
-  'image/png': ['png'],
-  'image/jpeg': ['jpg', 'jpeg'],
-  'application/pdf': ['pdf'],
-  'text/plain': ['txt'],
-};
+export { type AllowedType, MAX_FILE_BYTES };
 
 export interface CheckedFile {
   /** Decided from the bytes, never taken from the client. */
@@ -67,19 +58,19 @@ const extensionOf = (name: string) => (name.includes('.') ? (name.split('.').pop
 const mediaTypeOf = (declared: string) => declared.split(';')[0]!.trim().toLowerCase();
 
 /**
- * Accepts PNG, JPEG, PDF and UTF-8 text up to 10 MiB. The extension, the declared content type and the actual
+ * Accepts PNG, JPEG, PDF and UTF-8 text up to 10 MiB (see limits.ts). The extension, the declared content type and the actual
  * bytes must all agree: an executable renamed to .png fails the signature check, and SVG, HTML, archives and
  * executables are not on the list at all. This is not antivirus protection.
  */
 export function validateUpload(file: { originalName: string; declaredType: string; data: Buffer }): CheckedFile {
   if (file.data.length === 0) throw new UnsupportedMediaError('The file is empty.');
-  if (file.data.length > MAX_FILE_BYTES) throw new PayloadTooLargeError('The file is larger than 10 MiB.');
+  if (file.data.length > MAX_FILE_BYTES) throw new PayloadTooLargeError(`The file is larger than ${FILE_LIMIT_LABEL}.`);
 
   const originalName = sanitizeFilename(file.originalName);
   const detected = detect(file.data);
   if (!detected) throw new UnsupportedMediaError('Only PNG, JPEG, PDF and plain text (UTF-8) files can be attached.');
 
-  if (!EXTENSIONS[detected].includes(extensionOf(originalName))) {
+  if (!EXTENSIONS_BY_TYPE[detected].includes(extensionOf(originalName))) {
     throw new UnsupportedMediaError('The file name extension does not match the file content.');
   }
   if (mediaTypeOf(file.declaredType) !== detected) {
