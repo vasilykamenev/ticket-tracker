@@ -1,4 +1,5 @@
 import { ApiClient } from 'adminjs';
+import { ALLOWED_EXTENSIONS, FILE_LIMIT_LABEL, MAX_FILE_BYTES } from '../../storage/limits.js';
 
 const api = new ApiClient();
 
@@ -37,13 +38,11 @@ export function ticketUrl(ticketId: string): string {
   return `${adminRoot()}/resources/Ticket/records/${ticketId}/show`;
 }
 
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-export const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'pdf', 'txt'];
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 /** Friendly pre-check before sending; the server checks size, type and content again and is the authority. */
@@ -51,7 +50,7 @@ export function checkFile(file: File): string | null {
   const extension = file.name.includes('.') ? (file.name.split('.').pop() ?? '').toLowerCase() : '';
   if (!ALLOWED_EXTENSIONS.includes(extension)) return 'Only PNG, JPEG, PDF and plain text (.txt) files can be attached.';
   if (file.size === 0) return 'The file is empty.';
-  if (file.size > MAX_UPLOAD_BYTES) return `The file is ${formatBytes(file.size)}; the limit is 10 MB.`;
+  if (file.size > MAX_FILE_BYTES) return `The file is ${formatBytes(file.size)}; the limit is ${FILE_LIMIT_LABEL}.`;
   return null;
 }
 

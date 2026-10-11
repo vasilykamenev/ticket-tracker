@@ -4,7 +4,7 @@ import multer from 'multer';
 import type { AttachmentService } from '../../domain/attachments/attachment-service.js';
 import { PayloadTooLargeError, UnsupportedMediaError } from '../../domain/errors.js';
 import type { Actor } from '../../policies/ticket-policy.js';
-import { MAX_FILE_BYTES } from '../../storage/file-validation.js';
+import { FILE_LIMIT_LABEL, MAX_FILE_BYTES } from '../../storage/limits.js';
 import { limitConcurrentUploads, rejectOversizedBody } from '../upload-limits.js';
 
 const actorOf = (req: Request): Actor => {
@@ -23,7 +23,7 @@ const parseUpload: RequestHandler = (req, res, next) => {
     if (!err) return next();
     if (err instanceof multer.MulterError) {
       return next(
-        err.code === 'LIMIT_FILE_SIZE' ? new PayloadTooLargeError('The file is larger than 10 MiB.') : new UnsupportedMediaError('Send exactly one file, in the "file" field.'),
+        err.code === 'LIMIT_FILE_SIZE' ? new PayloadTooLargeError(`The file is larger than ${FILE_LIMIT_LABEL}.`) : new UnsupportedMediaError('Send exactly one file, in the "file" field.'),
       );
     }
     next(err);
