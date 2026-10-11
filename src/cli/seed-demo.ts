@@ -4,9 +4,9 @@
 // Safe to repeat: records have fixed ids and are only added when missing. Files go to the configured S3 bucket.
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
-import { SeedGuardError } from '../src/seed/config.js';
-import { openSeedStorage, parseSeedNumber, runCli } from '../src/seed/cli.js';
-import { seedDemo } from '../src/seed/seed.js';
+import { SeedGuardError } from '../seed/config.js';
+import { openSeedStorage, parseSeedNumber, runCli } from '../seed/cli.js';
+import { seedDemo } from '../seed/seed.js';
 
 await runCli(async () => {
   const { values } = parseArgs({ options: { seed: { type: 'string' }, 'reference-date': { type: 'string' }, 'rotate-demo-passwords': { type: 'boolean' } } });

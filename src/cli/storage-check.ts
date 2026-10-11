@@ -3,8 +3,8 @@
 // uploads. Prints no secrets and no URLs. It also shows which types the bucket refuses, so you know what to
 // allow in the bucket's settings (Supabase buckets can restrict MIME types and file size).
 import { randomUUID } from 'node:crypto';
-import { loadStorageEnv } from '../src/config/env.js';
-import { createStorage } from '../src/storage/index.js';
+import { loadStorageEnv } from '../config/env.js';
+import { createStorage } from '../storage/index.js';
 
 const storage = createStorage(loadStorageEnv());
 
