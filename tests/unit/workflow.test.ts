@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assignTicketSchema,
   changeStatusSchema,
+  DESCRIPTION_MAX,
   createTicketSchema,
   parseInput,
   updateTicketSchema,
@@ -124,7 +125,9 @@ describe('input schemas', () => {
     expect(() => parseInput(createTicketSchema, { ...ok, subject: 'abcd' })).toThrow(ValidationError);
     expect(() => parseInput(createTicketSchema, { ...ok, subject: 'x'.repeat(201) })).toThrow(ValidationError);
     expect(() => parseInput(createTicketSchema, { ...ok, description: ' ' })).toThrow(ValidationError);
-    expect(() => parseInput(createTicketSchema, { ...ok, description: 'x'.repeat(10001) })).toThrow(ValidationError);
+    expect(parseInput(createTicketSchema, { ...ok, description: 'x'.repeat(DESCRIPTION_MAX) }).description).toHaveLength(1000); // the limit itself is allowed
+    expect(() => parseInput(createTicketSchema, { ...ok, description: 'x'.repeat(DESCRIPTION_MAX + 1) })).toThrow(ValidationError);
+    expect(() => parseInput(updateTicketSchema, { description: 'x'.repeat(DESCRIPTION_MAX + 1) })).toThrow(ValidationError);
   });
 
   it('rejects unknown or forbidden fields instead of passing them through', () => {
