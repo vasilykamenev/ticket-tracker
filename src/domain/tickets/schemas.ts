@@ -49,11 +49,35 @@ export const changeStatusSchema = z
   })
   .strict();
 
+/** Largest batch the bulk status change accepts; bigger selections are split by the operator. */
+export const BULK_MAX_TICKETS = 100;
+
+/** The distinct tickets of a batch must fit the limit; raised before the database is touched. */
+export function assertBatchSize(distinctTickets: number): void {
+  if (distinctTickets > BULK_MAX_TICKETS) {
+    throw new ValidationError('batch_too_large', `Select at most ${BULK_MAX_TICKETS} tickets at a time`, { items: `at most ${BULK_MAX_TICKETS} tickets` });
+  }
+}
+
+export const bulkChangeStatusSchema = z
+  .object({
+    // id/version pairs as the operator saw them, so every ticket is checked for concurrent edits.
+    items: z.array(z.object({ id: uuid, version: z.number().int().positive() }).strict()).min(1),
+    targetStatus: z.enum(STATUS_CODES),
+    reason: trimmed(1, REASON_MAX).optional(),
+    resolution: trimmed(RESOLUTION_MIN, OUTCOME_MAX).optional(),
+    unresolvedReason: trimmed(RESOLUTION_MIN, OUTCOME_MAX).optional(),
+    // UNRESOLVED applies one shared reason to every ticket; the operator has to say that is appropriate.
+    confirmSharedReason: z.boolean().optional(),
+  })
+  .strict();
+
 export const versionSchema = z.number().int().positive();
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
 export type AssignTicketInput = z.infer<typeof assignTicketSchema>;
+export type BulkChangeStatusInput = z.infer<typeof bulkChangeStatusSchema>;
 export type ChangeStatusInput = z.infer<typeof changeStatusSchema>;
 
 export function parseInput<T>(schema: z.ZodType<T>, input: unknown): T {

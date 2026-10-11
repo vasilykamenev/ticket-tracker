@@ -37,6 +37,26 @@ export class ValidationError extends DomainError {
   }
 }
 
+/** One ticket that stopped a bulk operation. `number` is null for ids that are unknown or out of scope. */
+export interface BulkFailure {
+  ticketId: string;
+  number: number | null;
+  code: string;
+  message: string;
+}
+
+/** A bulk operation that was rolled back as a whole. Lists every ticket that was refused and why (HTTP 409). */
+export class BulkRejectedError extends DomainError {
+  constructor(readonly failures: BulkFailure[]) {
+    super(
+      'bulk_rejected',
+      409,
+      `${failures.length} of the selected tickets cannot be changed. Nothing was changed.`,
+      Object.fromEntries(failures.map((f) => [f.number === null ? `Ticket ${f.ticketId}` : `Ticket #${f.number}`, f.message])),
+    );
+  }
+}
+
 /** The uploaded file is bigger than the limit (HTTP 413). */
 export class PayloadTooLargeError extends DomainError {
   constructor(message: string) {
