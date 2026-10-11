@@ -28,6 +28,12 @@ export async function postRecordAction(resourceId: string, recordId: string, act
   await api.recordAction({ resourceId, recordId, actionName, method: 'post', data });
 }
 
+/** Bulk action call: a GET for the form state, or a POST with `data`. The selection travels in the query. */
+export async function bulkAction<T>(resourceId: string, actionName: string, recordIds: string[], data?: Record<string, unknown>): Promise<T> {
+  const response = await api.bulkAction({ resourceId, actionName, recordIds, ...(data ? { data } : {}) });
+  return response.data as T;
+}
+
 /** Where the admin lives, taken from the current URL (works for any rootPath). */
 export function adminRoot(): string {
   const at = window.location.pathname.indexOf('/resources/');
