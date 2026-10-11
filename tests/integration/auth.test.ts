@@ -102,6 +102,19 @@ describe('health', () => {
   });
 });
 
+describe('response headers', () => {
+  it('sends the baseline security headers on pages and on API refusals, without X-Powered-By', async () => {
+    for (const url of ['/auth/login', '/admin/api/resources/Ticket/actions/list', '/health/live', '/no-such-page']) {
+      const res = await request(app).get(url);
+      expect(res.headers['x-content-type-options'], url).toBe('nosniff');
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['referrer-policy'], url).toBe('same-origin');
+      expect(res.headers['x-powered-by'], url).toBeUndefined();
+      expect(res.headers['strict-transport-security'], url).toBeUndefined(); // the test environment is not production
+    }
+  });
+});
+
 describe('root address', () => {
   it('sends the bare address to the admin panel without creating a session', async () => {
     const res = await request(app).get('/').redirects(0).expect(302);

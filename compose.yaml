@@ -1,7 +1,46 @@
+# The production image with its own PostgreSQL, for a local run:
+#   cp .env.example .env     # set SESSION_SECRET (32+ characters) and, for uploads, the S3_* values
+#   docker compose up --build
+# The database addresses below override the ones in .env. The first administrator:
+#   docker compose run --rm -e ADMIN_PASSWORD=... app node dist/cli/admin-create.js --email admin@example.test
+x-database: &database
+  DATABASE_URL: postgresql://postgres:postgres@db:5432/tickets?schema=support
+  DIRECT_URL: postgresql://postgres:postgres@db:5432/tickets?schema=support
+
 services:
-  app:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tickets
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tickets"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
     image: ghcr.io/berney/support-ticket-tracker:local
     build: .
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/cli/seed-reference.js"]
     env_file: .env
+    environment: *database
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: ghcr.io/berney/support-ticket-tracker:local
+    env_file: .env
+    environment: *database
     ports:
       - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

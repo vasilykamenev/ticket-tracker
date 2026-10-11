@@ -2,8 +2,8 @@
 // The password is read from ADMIN_PASSWORD or a hidden prompt, never from a CLI argument.
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
-import { hashPassword, MAX_PASSWORD_LENGTH } from '../src/auth/password.js';
-import { normalizeEmail } from '../src/domain/users/email.js';
+import { hashPassword, MAX_PASSWORD_LENGTH } from '../auth/password.js';
+import { normalizeEmail } from '../domain/users/email.js';
 
 const MIN_PASSWORD_LENGTH = 12;
 

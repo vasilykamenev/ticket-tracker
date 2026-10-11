@@ -4,9 +4,9 @@
 // Anything younger than --older-than-minutes (default 60) may still be in flight and is left alone.
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
-import { loadStorageEnv } from '../src/config/env.js';
-import { createStorage } from '../src/storage/index.js';
-import { reconcile } from '../src/storage/reconcile.js';
+import { loadStorageEnv } from '../config/env.js';
+import { createStorage } from '../storage/index.js';
+import { reconcile } from '../storage/reconcile.js';
 
 const { values } = parseArgs({ options: { 'dry-run': { type: 'boolean', default: false }, 'older-than-minutes': { type: 'string', default: '60' } } });
 const minutes = Number(values['older-than-minutes']);

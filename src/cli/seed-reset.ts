@@ -4,8 +4,8 @@
 // The counts are printed before anything is deleted; --dry-run stops there.
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
-import { openSeedStorage, parseSeedNumber, runCli } from '../src/seed/cli.js';
-import { type ResetPlan, resetDemo } from '../src/seed/reset.js';
+import { openSeedStorage, parseSeedNumber, runCli } from '../seed/cli.js';
+import { type ResetPlan, resetDemo } from '../seed/reset.js';
 
 await runCli(async () => {
   const { values } = parseArgs({
