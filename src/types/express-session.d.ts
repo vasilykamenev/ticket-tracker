@@ -15,6 +15,8 @@ declare module 'express-session' {
     /** epoch ms of login; basis of the absolute session lifetime */
     authAt: number;
     csrfToken: string;
+    /** set while the person is at the OAuth provider; used once by the callback */
+    oauth: { provider: 'google' | 'github'; state: string; verifier: string; at: number };
     /** read by @adminjs/express as currentAdmin */
     adminUser: SessionUser;
   }
