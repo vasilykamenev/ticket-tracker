@@ -21,19 +21,47 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{font-family:system-ui,sans-serif;background:#f4f5f7;display:grid;place-items:center;min-height:100vh;margin:0}main{background:#fff;padding:2rem;border-radius:8px;width:min(22rem,90vw);box-shadow:0 1px 4px #0002}label{display:block;margin:.75rem 0 .25rem}input{width:100%;box-sizing:border-box;padding:.5rem}button{margin-top:1rem;padding:.5rem 1rem}.err{color:#b00020}</style></head><body><main>${body}</main></body></html>`;
+// Styled after the AdminJS sign-in screen: grey page, white card, blue welcome panel on the left.
+const STYLE = `*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#f8f9f9;color:#212529;font-family:Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px}
+.card{display:flex;width:min(860px,100%);min-height:520px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,.08)}
+.welcome{flex:0 0 40%;background:#3040d6;color:#fff;padding:40px 38px;display:flex;flex-direction:column}
+.welcome h2{margin:24px 0 24px;font-size:30px;font-weight:300;line-height:1.2}
+.welcome p{margin:0;font-size:14px;line-height:1.8;font-weight:300}
+.welcome .art{display:block;width:220px;height:auto;margin:32px auto 0}
+.form{flex:1;padding:38px;display:flex;flex-direction:column;justify-content:flex-start}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:30px;font-size:22px;font-weight:700;color:#1a1c28}
+h1{margin:0 0 20px;font-size:20px;font-weight:600}
+label{display:block;margin:16px 0 6px;font-size:12px}
+label.req:before{content:"* ";color:#3040d6}
+input{width:100%;height:42px;padding:0 12px;font:inherit;font-size:14px;border:1px solid #c0c0ca;border-radius:4px;background:#fff;color:#212529}
+input:focus{outline:none;border-color:#3040d6;box-shadow:0 0 0 3px rgba(48,64,214,.15)}
+button{display:block;margin:28px auto 0;min-width:80px;height:34px;padding:0 24px;font:inherit;font-size:14px;color:#fff;background:#3040d6;border:0;border-radius:4px;cursor:pointer}
+button:hover{background:#2431b0}
+.err{margin:0 0 4px;padding:14px 16px;background:#fde8e8;border-left:4px solid #b91c1c;border-radius:4px;color:#7f1d1d}
+@media(max-width:700px){.card{flex-direction:column}.welcome{flex:none;padding:28px}.welcome .art{display:none}}`;
+
+// The number after ? is only a cache buster: raise it when public/login-art.png changes (the file is cached for a day).
+const ILLUSTRATION = '<img class="art" src="/auth/login-art.png?v=2" alt="" width="220" height="241">';
+
+function page(title: string, body: string, side?: string): string {
+  const main = side
+    ? `<section class="welcome">${side}</section><section class="form">${body}</section>`
+    : `<section class="form">${body}</section>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${STYLE}</style></head><body><main class="card"${side ? '' : ' style="width:min(26rem,100%);min-height:0"'}>${main}</main></body></html>`;
 }
+
+const BRAND = '<div class="brand">Ticket Tracker</div>';
 
 function loginPage(token: string, error?: string): string {
   return page(
     'Sign in',
-    `<h1>Sign in</h1>${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
+    `${BRAND}${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/auth/login">
 <input type="hidden" name="_csrf" value="${escapeHtml(token)}">
-<label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required maxlength="254">
-<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="${MAX_PASSWORD_LENGTH}">
-<button type="submit">Sign in</button></form>`,
+<label class="req" for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required maxlength="254">
+<label class="req" for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="${MAX_PASSWORD_LENGTH}">
+<button type="submit">Login</button></form>`,
+    `<h2>Welcome</h2><p>to the support ticket tracker: handle customer requests, track their status and keep the whole team in one place.</p>${ILLUSTRATION}`,
   );
 }
 
@@ -129,7 +157,7 @@ export function createAuthRouter(prisma: PrismaClient, env: Env): Router {
     res.send(
       page(
         'Sign out',
-        `<h1>Sign out?</h1><form method="post" action="/auth/logout"><input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(req))}"><button type="submit">Sign out</button></form>`,
+        `${BRAND}<h1>Sign out?</h1><form method="post" action="/auth/logout"><input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(req))}"><button type="submit">Sign out</button></form>`,
       ),
     );
   });

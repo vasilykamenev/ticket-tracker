@@ -127,6 +127,10 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   app.get('/auth/logo.png', (_req, res) => {
     res.sendFile(path.join(publicDir, 'logo.png'), { maxAge: '1d' });
   });
+  // The outline picture on the welcome panel of the sign-in page (440 px wide, shown at 220 px).
+  app.get('/auth/login-art.png', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'login-art.png'), { maxAge: '1d' });
+  });
 
   app.use(createSessionMiddleware(env, sessionPool));
   app.get('/auth/csrf-client.js', (_req, res) => {
