@@ -1,9 +1,9 @@
 name: deploy
-# Production delivery. Runs by itself after the `ci` workflow succeeds on `main`, or by hand (Actions > deploy > Run).
+# Production delivery to a VPS. Runs by itself after the `ci` workflow succeeds on `main`, or by hand (Actions > deploy > Run).
 #
 #   image    builds the production image and publishes it to GHCR (:<sha> and :latest)
 #   migrate  applies the database migrations with the MIGRATOR role (the application never has those credentials)
-#   deploy   tells the Docker host to pull the new image (optional deploy hook; see below)
+#   deploy   copies deploy/vps/ to the server and runs deploy.sh over SSH: pull, start, wait for healthy, roll back if not
 #   verify   waits for the deployment and smoke-tests it with both roles, and checks object storage
 #
 # All steps that touch production use the `production` environment: its secrets, and its protection rules (add
@@ -11,8 +11,11 @@ name: deploy
 #
 # Environment secrets:  DIRECT_URL (migrator role), DATABASE_URL (runtime role), S3_ENDPOINT, S3_REGION, S3_BUCKET,
 #                       S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, SMOKE_ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD,
-#                       optionally SMOKE_AGENT_EMAIL, SMOKE_AGENT_PASSWORD and DEPLOY_HOOK_URL
-# Variable:             PRODUCTION_URL  (https://... of the running application)
+#                       optionally SMOKE_AGENT_EMAIL, SMOKE_AGENT_PASSWORD
+#                       VPS_HOST (address), VPS_USER (deploy), VPS_SSH_KEY (private key), VPS_HOST_KEY (the server's
+#                       public host key, from `ssh-keyscan -t ed25519 <address>`: pinned, so nothing can impersonate it)
+# Variable:             PRODUCTION_URL  (https://<DOMAIN> of the running application)
+# The application's own secrets live on the server, in /opt/ticket-tracker/.env; this workflow never writes them.
 on:
   workflow_run:
     workflows: [ci]
@@ -37,6 +40,7 @@ jobs:
       packages: write
     outputs:
       image: ghcr.io/${{ github.repository }}:${{ steps.revision.outputs.sha }}
+      revision: ${{ steps.revision.outputs.sha }}
     steps:
       - id: revision
         # The commit CI has just verified (for a manual run, the commit that was selected).
@@ -94,23 +98,51 @@ jobs:
     needs: [image, migrate]
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      packages: read
     env:
-      DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
       IMAGE: ${{ needs.image.outputs.image }}
+      REVISION: ${{ needs.image.outputs.revision }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+      # Lets the server pull the private image for this one deployment; it is logged out again at the end.
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REGISTRY_USER: ${{ github.actor }}
     steps:
-      - name: Ask the host to deploy the new image
+      - name: Is a server configured?
+        id: server
         run: |
-          if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::notice::No DEPLOY_HOOK_URL secret: the image $IMAGE is published and migrated; start it on the Docker host."
-            exit 0
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ] || [ -z "$VPS_HOST_KEY" ]; then
+            echo "::notice::No VPS_* secrets: the image $IMAGE is published and migrated; start it on the server."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
-          hook="$DEPLOY_HOOK_URL"
-          case "$hook" in
-            # Render: deploy exactly the image of the verified commit, not whatever :latest points to by then.
-            https://api.render.com/deploy/*) hook="${hook}&imgURL=$(printf '%s' "$IMAGE" | jq -sRr @uri)" ;;
-          esac
-          curl -fsS --max-time 60 -X POST "$hook" >/dev/null
-          echo "Deployment requested."
+      - if: steps.server.outputs.configured == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVISION }}
+          sparse-checkout: deploy/vps
+      - name: Deploy over SSH
+        if: steps.server.outputs.configured == 'true'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
+          ssh_opts=(-i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20)
+          remote="$VPS_USER@$VPS_HOST"
+
+          # The server's configuration follows the repository: the same commit as the image.
+          scp "${ssh_opts[@]}" deploy/vps/compose.yaml deploy/vps/Caddyfile deploy/vps/deploy.sh "$remote:/opt/ticket-tracker/"
+
+          # The registry user and token travel over the SSH connection's stdin, never in a command line; deploy.sh
+          # logs in for this deployment and logs out when it ends, whatever the outcome.
+          printf '%s\n%s\n' "$REGISTRY_USER" "$REGISTRY_TOKEN" \
+            | ssh "${ssh_opts[@]}" "$remote" bash /opt/ticket-tracker/deploy.sh "$IMAGE" --registry-login-stdin
 
   verify:
     needs: [image, deploy]
@@ -145,6 +177,7 @@ jobs:
             echo "::notice::No PRODUCTION_URL variable: nothing to smoke-test yet."
             exit 0
           fi
+          # The certificate is issued a moment after the first start of a new server.
           for _ in $(seq 1 40); do
             curl -fsS --max-time 10 "$SMOKE_BASE_URL/health/ready" >/dev/null && exit 0
             sleep 15
