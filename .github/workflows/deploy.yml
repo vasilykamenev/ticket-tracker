@@ -138,6 +138,9 @@ jobs:
 
           # The server's configuration follows the repository: the same commit as the image.
           scp "${ssh_opts[@]}" deploy/vps/compose.yaml deploy/vps/Caddyfile deploy/vps/deploy.sh "$remote:/opt/ticket-tracker/"
+          # The operator's scripts (admin account, demo data) travel with it; they are run by hand on the server.
+          scp -r "${ssh_opts[@]}" deploy/vps/tools "$remote:/opt/ticket-tracker/"
+          ssh "${ssh_opts[@]}" "$remote" chmod 755 /opt/ticket-tracker/tools/*.sh
 
           # The registry user and token travel over the SSH connection's stdin, never in a command line; deploy.sh
           # logs in for this deployment and logs out when it ends, whatever the outcome.

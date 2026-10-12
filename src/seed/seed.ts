@@ -17,13 +17,15 @@ import {
   type SeedUser,
   generateDataset,
 } from './dataset.js';
-import { insertAll, mapLimit } from './util.js';
+import { chunks, insertAll, mapLimit } from './util.js';
 
 export interface SeedOptions extends DatasetOptions {
   /** Give the existing demo accounts new passwords (and end their sessions). */
   rotatePasswords?: boolean;
   /** Parallel uploads and storage checks. */
   concurrency?: number;
+  /** Told about each step; a big dataset takes a while and the operator should see it move. */
+  progress?: (message: string) => void;
 }
 
 /** How many records of each kind were added (or repaired) by one run. */
@@ -127,9 +129,13 @@ const attachmentRow = (f: StoredFile, bucket: string) => ({
 export async function seedDemo(prisma: PrismaClient, storage: ObjectStorage, env: SeedEnv, options: SeedOptions = {}): Promise<SeedSummary> {
   assertSeedAllowed(env);
   await ensureSystemStatuses(prisma);
+  options.progress?.('generating the dataset in memory');
   const data = generateDataset(options);
   const created: SeedSummary = {};
-  const add = (what: string, n: number) => (created[what] = (created[what] ?? 0) + n);
+  const add = (what: string, n: number) => {
+    created[what] = (created[what] ?? 0) + n;
+    options.progress?.(`${what}: ${n} added`);
+  };
 
   // Nothing is written before every conflict with other people's rows and every missing password is known.
   await assertNoForeignConflicts(prisma, data);
@@ -205,26 +211,38 @@ async function moveSequencePastTickets(prisma: PrismaClient): Promise<void> {
 
 /** A demo address, group code or ticket number that already belongs to somebody else's row would break the insert half-way. */
 async function assertNoForeignConflicts(prisma: PrismaClient, data: SeedDataset): Promise<void> {
-  const own = <T extends { id: string }>(rows: T[]) => ({ notIn: rows.map((r) => r.id) });
-  const numbers = data.tickets.flatMap((t) => (t.number === null ? [] : [t.number]));
-  const [users, customers, groups, tickets] = await Promise.all([
-    prisma.user.findMany({ where: { normalizedEmail: { in: data.users.map((u) => normalizeEmail(u.email)) }, id: own(data.users) }, select: { normalizedEmail: true } }),
-    prisma.customer.findMany({
-      where: { emailNormalized: { in: data.customers.map((c) => normalizeEmail(c.email)) }, id: own(data.customers) },
-      select: { emailNormalized: true },
-    }),
-    prisma.supportGroup.findMany({ where: { code: { in: data.groups.map((g) => g.code) }, id: own(data.groups) }, select: { code: true } }),
-    numbers.length === 0 ? [] : prisma.ticket.findMany({ where: { number: { in: numbers }, id: own(data.tickets) }, select: { number: true } }),
-  ]);
-  const clashes = [
-    ...tickets.map((t) => `ticket number ${t.number}`),
-    ...users.map((u) => u.normalizedEmail),
-    ...customers.map((c) => c.emailNormalized),
-    ...groups.map((g) => `group ${g.code}`),
-  ];
+  // Looked up in chunks (a database statement takes a limited number of parameters) and compared with the id the
+  // dataset itself would give the row: a row with the demo address but another id is somebody else's.
+  const foreign = async <K extends string | number>(
+    keys: Array<[K, string]>,
+    find: (part: K[]) => Promise<Array<{ key: K; id: string }>>,
+  ): Promise<K[]> => {
+    const expected = new Map(keys);
+    const clashes: K[] = [];
+    for (const part of chunks(keys.map(([key]) => key))) {
+      for (const row of await find(part)) if (expected.get(row.key) !== row.id) clashes.push(row.key);
+    }
+    return clashes;
+  };
+  const users = await foreign(
+    data.users.map((u) => [normalizeEmail(u.email), u.id]),
+    async (part) => (await prisma.user.findMany({ where: { normalizedEmail: { in: part } }, select: { id: true, normalizedEmail: true } })).map((r) => ({ key: r.normalizedEmail, id: r.id })),
+  );
+  const customers = await foreign(
+    data.customers.map((c) => [normalizeEmail(c.email), c.id]),
+    async (part) => (await prisma.customer.findMany({ where: { emailNormalized: { in: part } }, select: { id: true, emailNormalized: true } })).map((r) => ({ key: r.emailNormalized, id: r.id })),
+  );
+  const groups = await foreign(
+    data.groups.map((g) => [g.code, g.id]),
+    async (part) => (await prisma.supportGroup.findMany({ where: { code: { in: part } }, select: { id: true, code: true } })).map((r) => ({ key: r.code, id: r.id })),
+  );
+  const tickets = await foreign(
+    data.tickets.flatMap((t): Array<[number, string]> => (t.number === null ? [] : [[t.number, t.id]])),
+    async (part) => (await prisma.ticket.findMany({ where: { number: { in: part } }, select: { id: true, number: true } })).map((r) => ({ key: r.number, id: r.id })),
+  );
+  const clashes = [...tickets.map((n) => `ticket number ${n}`), ...users, ...customers, ...groups.map((g) => `group ${g}`)];
   if (clashes.length > 0) {
     const shown = clashes.slice(0, 5).join(', ') + (clashes.length > 5 ? ', ...' : '');
     throw new SeedGuardError(`These already exist and are not part of the demo dataset: ${shown}. Nothing was changed.`);
   }
 }
-

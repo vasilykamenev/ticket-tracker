@@ -84,12 +84,24 @@ Delivery to a server of your own (D-022). Everything is in `deploy/vps/`. One-ti
 4. **GitHub**, environment `production`: secrets `VPS_HOST`, `VPS_USER` (`deploy`), `VPS_SSH_KEY` (the content of `deploy_key`), `VPS_HOST_KEY` (the output of `ssh-keyscan -t ed25519 <address>`), and the variable `PRODUCTION_URL` (`https://<DOMAIN>`).
 5. **Deliver**: a push to `main` that passes CI runs `deploy`: image, migrations, copy of `deploy/vps`, `deploy.sh` over SSH (pull, start, wait for healthy, roll back if not), then the storage check and the smoke test.
 
+**Operator scripts** (copied to `/opt/ticket-tracker/tools/` by every deployment, run on the server as `deploy`; D-023):
+
+| Script | What it does |
+| --- | --- |
+| `./tools/admin-create.sh --email you@example.com [--name "..."]` | creates an administrator (the password is asked for, hidden) |
+| `./tools/seed.sh [--tickets 2000] [--seed 42]` | creates the demo dataset; `--tickets 20000` or `--tickets 200_000` for more (customers, comments and files grow with it) |
+| `./tools/verify.sh` | checks the dataset: counts, workflow, dates, every file in the bucket |
+| `./tools/remove.sh [--dry-run]` | removes the demo dataset (only its own rows and files) |
+
+Demo data in production needs a deliberate bypass: the scripts run each command once with `APP_ENV=demo`, only for that container, and ask you to type a phrase first. Plan for 1 GB of free memory per 50 000 tickets (the script checks). Details and limits: D-023.
+
 By hand on the server: `/opt/ticket-tracker/deploy.sh ghcr.io/<owner>/<repo>:<sha>` redeploys a version (add `--registry-login-stdin` and pipe the user and a token on two lines for a private image); `docker compose logs -f app` shows the application's log.
 
 ## Demo data
 
 ```
 SEED_ADMIN_PASSWORD=... SEED_AGENT_PASSWORD=... npm run seed:demo -- --seed 42   # 17 accounts, 300 customers, 2000 tickets, 10000 comments, 200 files
+#   --tickets N (500 to 1000000) makes it bigger: customers, comments and files scale with it; give the same N to seed:verify and seed:reset
 npm run seed:verify                                                              # counts, workflow, dates, and every file present in Storage
 ALLOW_DEMO_RESET=true npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only]   # APP_ENV must be set (development or demo)
 ```

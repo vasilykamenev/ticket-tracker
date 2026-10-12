@@ -26,6 +26,23 @@ services:
         max-file: "5"
     networks: [internal]
 
+  # One-off commands for the operator (the scripts in tools/): `docker compose run --rm tools node dist/cli/...`.
+  # The profile keeps it out of `up`, so it never runs next to the application. It has its own memory limit because
+  # building a big demo dataset happens in memory (the scripts set TOOLS_MEMORY from the size).
+  tools:
+    profiles: [tools]
+    image: ${IMAGE:?set IMAGE, the tools scripts do}
+    env_file: .env
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${TOOLS_MEMORY:-1g}
+    pids_limit: 256
+    networks: [internal]
+
   caddy:
     image: caddy:2.11.7
     restart: unless-stopped

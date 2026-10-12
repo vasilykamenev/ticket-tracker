@@ -1,10 +1,10 @@
 // Deletes the demo dataset (only its own rows and files) and recreates it.
-// Usage: npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only] [--seed 42]
+// Usage: npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only] [--seed 42] [--tickets 2000]
 // Needs ALLOW_DEMO_RESET=true and APP_ENV=development|demo (set explicitly); a production environment is always refused.
 // The counts are printed before anything is deleted; --dry-run stops there.
 import { parseArgs } from 'node:util';
 import { PrismaClient } from '@prisma/client';
-import { openSeedStorage, parseSeedNumber, runCli } from '../seed/cli.js';
+import { openSeedStorage, parseSeedNumber, parseTicketCount, runCli } from '../seed/cli.js';
 import { type ResetPlan, resetDemo } from '../seed/reset.js';
 
 await runCli(async () => {
@@ -15,6 +15,7 @@ await runCli(async () => {
       'dry-run': { type: 'boolean' },
       'delete-only': { type: 'boolean' },
       seed: { type: 'string' },
+      tickets: { type: 'string' },
     },
   });
   const dryRun = values['dry-run'] === true;
@@ -32,7 +33,7 @@ await runCli(async () => {
       storage,
       process.env,
       { dataset: values.dataset, confirm: values.confirm },
-      { dryRun, deleteOnly: values['delete-only'], seed: parseSeedNumber(values.seed, 42), onPlan: printPlan },
+      { dryRun, deleteOnly: values['delete-only'], seed: parseSeedNumber(values.seed, 42), tickets: parseTicketCount(values.tickets), onPlan: printPlan },
     );
     if (result.leftoverObjects > 0) console.warn(`${result.leftoverObjects} file(s) could not be deleted; npm run storage:reconcile will remove them.`);
     if (result.seeded) {
