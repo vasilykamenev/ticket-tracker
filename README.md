@@ -5,12 +5,24 @@ agents, and administered by admins. AdminJS + Express + Prisma on Supabase Postg
 Docker container behind Caddy (automatic HTTPS) on a VPS.
 
 - **Live:** https://3130058.vpsnet.cloud (sign in at `/admin`). Reviewer accounts are shared separately; the repository holds no passwords.
-- **Requirements:** `docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md` · **Decisions:** `docs/decisions.md` · **Progress and evidence:** `docs/acceptance.md` · **Notes for the review:** `docs/review.md`
+
+## Documentation
+
+| Read | To learn |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | The parts, the request pipeline, where each rule lives, the source layout (with diagrams) |
+| [docs/database.md](docs/database.md) | The data model (ER diagram), integrity, concurrency, attachment states, database roles, migrations |
+| [docs/authentication.md](docs/authentication.md) | Roles, the password and OAuth sign-in flows (sequence diagrams), sessions, CSRF, authorization levels |
+| [docs/workflow.md](docs/workflow.md) | Statuses and transitions (state diagram), assignee rules, comments and attachments, who may do what |
+| [docs/operations.md](docs/operations.md) | The delivery pipeline, the server, configuration reference, setup procedures, demo data, troubleshooting |
+| [docs/decisions.md](docs/decisions.md) | Every design decision with its reasons (D-001 to D-027) |
+| [docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md](docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md) | The requirements |
+| [docs/acceptance.md](docs/acceptance.md), [docs/review.md](docs/review.md) | Progress and evidence; notes for the reviewer |
 
 ## What it does
 
 - **Tickets** with a subject, description (up to 1000 characters), priority, customer, group, assignee, status, resolution or unresolved reason, and a full history. Lists have search, filters, sorting and pagination (checked with 2000 tickets).
-- **A fixed workflow** of six system statuses (NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, UNRESOLVED, CLOSED) with an explicit transition matrix, required reasons and ADMIN-only steps. Every change is one transaction: the ticket, its version and its history entry.
+- **A fixed workflow** of six system statuses (NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, UNRESOLVED, CLOSED) with an explicit transition matrix, required reasons and ADMIN-only steps (see [docs/workflow.md](docs/workflow.md)). The status is changed with the Change status action or with the Status field of the edit form, which saves it together with the other edits. Every change is one transaction: the ticket, its version and its history entry.
 - **My open tickets** in the side menu: the ticket list filtered to the signed-in agent as the assignee and every status except CLOSED (the status filter accepts `__open__` for that). AdminJS can only put a page in the menu, so the entry is a small page that sends the person on to the filtered list. Administrators have no agent profile, so they get a short explanation and use the Tickets list.
 - **Inline comments** on the ticket page (create, edit by the author or an admin, never on CLOSED or UNRESOLVED tickets) and **attachments** (PNG, JPEG, PDF, UTF-8 text; 10 MiB; up to 5 per comment) in a private Supabase bucket.
 - **Bulk status change** for up to 100 selected tickets, all-or-nothing, naming every refused ticket.
@@ -19,6 +31,16 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 - **Optimistic locking:** every edit carries the version it started from; a concurrent change is refused instead of overwritten.
 
 ## How it is built
+
+```mermaid
+flowchart LR
+    B["Browser<br/>AdminJS app"] -->|HTTPS| C["Caddy"] --> A["Application<br/>Express + AdminJS<br/>domain services"]
+    A --> PG[("Supabase PostgreSQL")]
+    A --> ST[("Supabase Storage<br/>private bucket")]
+    A -.->|optional| X["Claude API,<br/>Google / GitHub sign-in"]
+```
+
+The full picture, with the request pipeline and a sequence diagram of a status change, is in [docs/architecture.md](docs/architecture.md).
 
 | Part | Choice |
 | --- | --- |
@@ -32,6 +54,8 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 The business rules live in domain services (`src/domain`) and policies (`src/policies`), not in AdminJS hooks. AdminJS resources are guarded wrappers that call them, and the generic edit and delete actions that could bypass the workflow are switched off. Field labels and help texts come from one catalog (`src/admin/field-catalog.ts`).
 
 ## Security
+
+The sign-in flows, session life and authorization levels are drawn and explained in [docs/authentication.md](docs/authentication.md); the summary:
 
 - **Passwords:** Argon2id with m = 19 456 KiB (19 MiB), t = 2, p = 1, the OWASP minimum. An unknown e-mail and a wrong password give the same error. The parameters are to be revisited against the production host's CPU (D-008).
 - **Sessions:** server-side, in PostgreSQL; `HttpOnly`, `SameSite=Lax`, `Secure` in production; 30 minutes idle, 8 hours absolute. The user is reloaded from the database on every request, and a change of role, password or active state bumps `sessionVersion` and ends the sessions.
@@ -61,7 +85,7 @@ npm run dev
 Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at least 32 characters.
 
 ## Tests
-`npm test` runs unit and integration tests: 33 files, about 390 cases covering the workflow matrix, roles and scope, optimistic locking, comments, attachments and the reconcile job, bulk changes, authentication and CSRF, the security headers, the AI field help and the demo dataset. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service. Use a throwaway database: some tests briefly switch other active administrators off while they run. The suites for the workflow, attachments and bulk changes were mutation-checked (the guard under test was removed on purpose and the suite had to fail).
+`npm test` runs unit and integration tests: 34 files, about 420 cases covering the workflow matrix, roles and scope, optimistic locking, comments, attachments and the reconcile job, bulk changes, authentication and CSRF, the security headers, the AI field help and the demo dataset. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service. Use a throwaway database: some tests briefly switch other active administrators off while they run. The suites for the workflow, attachments and bulk changes were mutation-checked (the guard under test was removed on purpose and the suite had to fail).
 
 The `ci` workflow (pull requests to `develop` and pushes to `develop`) type-checks, tests, builds the production image, runs it against PostgreSQL and smoke-tests it with both roles. The smoke test (`smoke.js`) is for a test environment: CI runs it against a throwaway database, and it is run by hand against staging when needed.
 
@@ -69,7 +93,7 @@ The `ci` workflow (pull requests to `develop` and pushes to `develop`) type-chec
 - **Not built:** Self-registration through OAuth (sign-in with Google or GitHub exists, but only for accounts an administrator already created, D-026); a customer portal or customer login; inbound e-mail; antivirus scanning of uploads; comment deletion (disabled by design); a background job for bulk changes of more than 100 tickets (use batches); monitoring and alerting; high availability (one server, a few seconds of unavailability while the container is replaced); a shared store for the login limits (needed once there is more than one replica).
 - **AI field help (optional bonus, requirements section 12):** built, off by default, and tried against the real Claude API (`claude-haiku-5-5`, about 1.2 seconds for a short question); see "AI field help" below.
 - **Customers are a shared directory** among staff, not a multi-tenant model: an agent can see the names and e-mail addresses of known customers but cannot reach out-of-scope tickets through them.
-- **A direct push to `main` is deployed after the secret scan only**, without the tests (they ran on `develop`). Branch protection is planned for when the repository becomes public (`docs/acceptance.md`).
+- **`main` takes pull requests only** (checks `verify`, `docker`, `gitleaks`; no bypass for administrators), because a push to `main` is deployed after the secret scan alone and the tests run on `develop` (D-024).
 
 ## AI field help (optional)
 
@@ -82,11 +106,25 @@ Off by default (`AI_ENABLED=false`): then there is no endpoint, no script and no
 - **Configuration** (`.env`): `AI_ENABLED=true` and `ANTHROPIC_API_KEY` switch it on (the application refuses to start with the flag and no key); optional `AI_MODEL`, `AI_EFFORT` (`low`, `medium`, `high`), `AI_RATE_PER_MINUTE`, `AI_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS`, `AI_DAILY_REQUESTS`. `AI_PROVIDER=fake` answers from the catalog without calling anyone, for development and tests (refused in production). On the server: put the two values in `/opt/ticket-tracker/.env` and restart the application.
 - **Limitations:** the limits are counted in memory (one replica; a restart resets the day); answers can be wrong, and the panel says so; only English field descriptions exist, though the model answers in the language of the question; only `claude-haiku-5-5` was measured against the real API (about 1.2 seconds), not the default `claude-opus-5-5`. Details: D-025.
 
+## Bulk status change
+
+On the ticket list, tick up to 100 tickets and use **Bulk Change Status**. The form lists the selected tickets and offers only the changes that are valid for all of them. Everything is applied in one transaction: if any ticket is refused (changed by someone else, wrong status, not allowed for your role), nothing changes and the form names every refused ticket (`Ticket #123: ...`). For more than 100 tickets, work in batches.
+
+Concurrent edits are handled with optimistic locking: the form remembers the version of every ticket it shows, and a ticket that somebody else saved in the meantime makes the whole batch fail instead of being overwritten. Reload the list and repeat. Details: D-016.
+
+## Attachments and storage
+Files are stored in a **private** Supabase Storage bucket `ticket-attachments` through its S3-compatible API; they never touch the server's disk. Set `S3_ENDPOINT` (`https://<project-ref>.supabase.co/storage/v1/s3`), `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_BUCKET` (all four S3 variables are required in production and demo). Without them, development keeps files in memory and loses them on restart.
+
+- `npm run storage:check`: writes, reads back, signs and deletes a small object; prints no secrets.
+- `npm run storage:reconcile -- --dry-run`: reports what is out of line between the database and the bucket after crashes (stale PENDING/FAILED/DELETING rows, objects without a row, rows without an object); without `--dry-run` it fixes them. The `storage-reconcile` workflow runs it every night once `RECONCILE_ENABLED=true` (and by hand as a dry run).
+- Limits: one file per upload, 10 MiB, 5 files per comment; PNG, JPEG, PDF and UTF-8 text.
+
 ## Layout
-See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `src/cli/` the seed, admin and storage commands (compiled into the image as `dist/cli/*.js`), `tests/` unit, integration and e2e suites.
+The source tree is described in [docs/architecture.md](docs/architecture.md#source-layout) (and in section 14 of the requirements). `src/cli/` holds the seed, admin and storage commands, compiled into the image as `dist/cli/*.js`.
 
+Delivery, the server, configuration and the operator scripts (admin account, demo data) are in [docs/operations.md](docs/operations.md).
 
-### Commit messages
+## Commit messages
 
 Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
 `<type>(<scope>): <summary>`. The summary is imperative, lowercase, has no trailing period and stays within about
@@ -104,79 +142,6 @@ Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/
 | `docs` | Documentation only |
 | `chore` | Maintenance that fits no other type |
 
-## Docker
+## License
 
-```
-docker build -t support-ticket-tracker .                                   # pinned Node, prepared AdminJS bundle, runs as `node`
-docker compose up --build                                                  # the image with its own PostgreSQL (migrations run first)
-docker run --rm --env-file prod.env IMAGE npx prisma migrate deploy        # migrations are a separate step (owner role)
-docker run --rm -e ADMIN_PASSWORD=... --env-file prod.env IMAGE node dist/cli/admin-create.js --email admin@example.test
-docker run --rm --env-file prod.env IMAGE node dist/cli/storage-reconcile.js --dry-run
-docker run --rm -e SMOKE_BASE_URL=https://... -e SMOKE_ADMIN_EMAIL=... -e SMOKE_ADMIN_PASSWORD=... [-e SMOKE_AGENT_EMAIL=... -e SMOKE_AGENT_PASSWORD=...] IMAGE node dist/cli/smoke.js
-```
-
-The smoke test (`smoke.js`) is for a test environment: CI runs it against a throwaway database (with `--write`), and it is run by hand against staging when the project needs it. The production deployment does not run it (D-024); against production use it read only (without `--write`) with accounts created for the purpose.
-
-The commands behind the npm scripts are compiled into the image as `dist/cli/*.js`. CI builds the image, runs it against PostgreSQL and smoke-tests it with both roles; `deploy` publishes it to GHCR and `storage-reconcile` runs nightly once enabled. Details: D-018.
-
-## Production on Supabase
-
-One-time setup (details and reasons: D-020). Passwords and keys live only in the host's secret store, in the GitHub environment `production` and in a git-ignored local file (for example `.env.production.local`); never in the repository or in chat.
-
-1. **Supabase dashboard.** Create the private bucket `ticket-attachments`. Under *Settings > API > Exposed schemas* keep only `public` (the schema `support` must not be exposed). Under *Settings > Database* copy the **session pooler** connection string (port 5432) and download the **SSL certificate**.
-2. **Database roles**, once, with the project owner's connection (generate two different passwords of 24+ characters and keep them):
-   ```
-   ADMIN_DATABASE_URL=postgresql://postgres:...@HOST:5432/postgres MIGRATOR_PASSWORD=... RUNTIME_PASSWORD=... npm run db:provision
-   ```
-   It creates `migrator` (owns the schema, migrations only) and `app_runtime` (rows only, no DDL), verifies the result and prints no password.
-3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), and the `VPS_*` secrets of the section below; variable `PRODUCTION_URL`. On the server (`/opt/ticket-tracker/.env`): `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
-4. **Deliver.** A push to `main` that passes the secret scan runs `deploy`: image, migrations, the server update over SSH, storage check, wait for the address. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
-
-## VPS
-
-Delivery to a server of your own (D-022). Everything is in `deploy/vps/`. One-time setup:
-
-1. **A server** with Ubuntu or Debian, a public IPv4 address and a DNS name that points at it (an `A` record; without a domain use `<ip with dashes>.sslip.io`). On your computer generate a key used only for deployments: `ssh-keygen -t ed25519 -f deploy_key -C deploy@github-actions`.
-2. **Prepare it** (as root, once, safe to repeat): copy `deploy/vps/bootstrap.sh` to the server and run `sudo ./bootstrap.sh --ssh-key "$(cat deploy_key.pub)"`. It installs Docker, creates the `deploy` user, opens only SSH, 80 and 443 and turns on security updates. Check that `ssh -i deploy_key deploy@<address>` works, then run it again with `--harden-ssh`.
-3. **The server's environment**: as the `deploy` user create `/opt/ticket-tracker/.env` from `deploy/vps/.env.example` (`chmod 600`): `DOMAIN`, `ACME_EMAIL`, `PUBLIC_URL`, a new `SESSION_SECRET`, `DATABASE_URL` (the runtime role through the session pooler), `DATABASE_CA_CERT`, `S3_*`. It stays on the server; the pipeline never touches it.
-4. **GitHub**, environment `production`: secrets `VPS_HOST`, `VPS_USER` (`deploy`), `VPS_SSH_KEY` (the content of `deploy_key`), `VPS_HOST_KEY` (the output of `ssh-keyscan -t ed25519 <address>`), and the variable `PRODUCTION_URL` (`https://<DOMAIN>`).
-5. **Deliver**: a push to `main` that passes the secret scan runs `deploy`: image, migrations, copy of `deploy/vps`, `deploy.sh` over SSH (pull, start, wait for healthy, roll back if not), then the storage check and the wait for the address.
-
-**Operator scripts** (copied to `/opt/ticket-tracker/tools/` by every deployment, run on the server as `deploy`; D-023):
-
-| Script | What it does |
-| --- | --- |
-| `./tools/admin-create.sh --email you@example.com [--name "..."]` | creates an administrator (the password is asked for, hidden) |
-| `./tools/seed.sh [--tickets 2000] [--seed 42]` | creates the demo dataset; `--tickets 20000` or `--tickets 200_000` for more (customers, comments and files grow with it) |
-| `./tools/verify.sh` | checks the dataset: counts, workflow, dates, every file in the bucket |
-| `./tools/remove.sh [--dry-run]` | removes the demo dataset (only its own rows and files) |
-
-Demo data in production needs a deliberate bypass: the scripts run each command once with `APP_ENV=demo`, only for that container, and ask you to type a phrase first. Plan for 1 GB of free memory per 50 000 tickets (the script checks). Details and limits: D-023.
-
-By hand on the server: `/opt/ticket-tracker/deploy.sh ghcr.io/<owner>/<repo>:<sha>` redeploys a version (add `--registry-login-stdin` and pipe the user and a token on two lines for a private image); `docker compose logs -f app` shows the application's log.
-
-## Demo data
-
-```
-SEED_ADMIN_PASSWORD=... SEED_AGENT_PASSWORD=... npm run seed:demo -- --seed 42   # 17 accounts, 300 customers, 2000 tickets, 10000 comments, 200 files
-#   --tickets N (500 to 1000000) makes it bigger: customers, comments and files scale with it; give the same N to seed:verify and seed:reset
-npm run seed:verify                                                              # counts, workflow, dates, and every file present in Storage
-ALLOW_DEMO_RESET=true npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only]   # APP_ENV must be set (development or demo)
-```
-
-In VS Code the same steps are in **Run and Debug** ("Seed: ...", the passwords are asked for hidden and not stored; a reset asks you to type the dataset name) and in **Terminal > Run Task** ("seed: ...", and "demo: migrate, seed statuses and load the demo data" for a first-time setup).
-
-Accounts are `admin1@example.test`, `admin2@example.test` and `agent01@example.test` ... `agent15@example.test`; the passwords are the two environment variables above (12+ characters, hashed, never printed). The files need the S3 settings of `.env` (the in-memory storage is refused). Reruns add nothing twice; `--rotate-demo-passwords` changes the passwords of existing demo accounts. Reset prints what it will remove, deletes only the demo rows and files and is refused in production (and whenever `APP_ENV` is not set explicitly to `development` or `demo`). Details and limits: D-017.
-
-## Bulk status change
-
-On the ticket list, tick up to 100 tickets and use **Bulk Change Status**. The form lists the selected tickets and offers only the changes that are valid for all of them. Everything is applied in one transaction: if any ticket is refused (changed by someone else, wrong status, not allowed for your role), nothing changes and the form names every refused ticket (`Ticket #123: ...`). For more than 100 tickets, work in batches.
-
-Concurrent edits are handled with optimistic locking: the form remembers the version of every ticket it shows, and a ticket that somebody else saved in the meantime makes the whole batch fail instead of being overwritten. Reload the list and repeat. Details: D-016.
-
-## Attachments and storage
-Files are stored in a **private** Supabase Storage bucket `ticket-attachments` through its S3-compatible API; they never touch the server's disk. Set `S3_ENDPOINT` (`https://<project-ref>.supabase.co/storage/v1/s3`), `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_BUCKET` (all four S3 variables are required in production and demo). Without them, development keeps files in memory and loses them on restart.
-
-- `npm run storage:check`: writes, reads back, signs and deletes a small object; prints no secrets.
-- `npm run storage:reconcile -- --dry-run`: reports what is out of line between the database and the bucket after crashes (stale PENDING/FAILED/DELETING rows, objects without a row, rows without an object); without `--dry-run` it fixes them. Schedule it (a GitHub Actions cron is planned for the deployment stage).
-- Limits: one file per upload, 10 MiB, 5 files per comment; PNG, JPEG, PDF and UTF-8 text.
+MIT, see `LICENSE`.
