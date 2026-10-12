@@ -74,6 +74,14 @@ One-time setup (details and reasons: D-020). Passwords and keys live only in the
 3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*` and `DEPLOY_HOOK_URL`; variable `PRODUCTION_URL`. On the Docker host: `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
 4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, hook, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
 
+## Render
+
+The production service is described in `render.yaml` (D-021). One-time setup:
+
+1. After the first run of `deploy` (a push to `main` that passes CI) the image `ghcr.io/vasilykamenev/ticket-tracker:latest` exists. It is private, so in Render add *Account Settings > Registry Credentials* named `ghcr` (GitHub Container Registry, your GitHub user, a token with the `read:packages` scope).
+2. *New > Blueprint*, pick this repository and branch `main`. Render asks for the secret values: paste the contents of `.env.render` (generated from the local production file) with *Environment > Add from .env*; set `PUBLIC_URL` to the service's `https://...onrender.com` address (or your domain) and redeploy.
+3. Copy the service's *Deploy Hook* URL into the GitHub environment `production` as the secret `DEPLOY_HOOK_URL`, and its address into the variable `PRODUCTION_URL`. From then on every push to `main` that passes CI is deployed, migrated, checked and smoke-tested automatically.
+
 ## Demo data
 
 ```
