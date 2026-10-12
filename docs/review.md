@@ -55,10 +55,12 @@ Where to look, what to click, and the likely questions with short answers. Crede
 
 **Was an AI assistant used to write the code?** Yes, an AI coding assistant helped; the requirements ask that business rules, permissions and secret-field exclusion remain explicit reviewed code (section 8.2). They are code in `src/domain` and `src/policies`, covered by tests that were mutation-checked: the guard under test was removed on purpose and the suite had to fail.
 
-**What is not done?** See "Out of scope and known limits" in the README: the optional AI support chat, OAuth, a customer portal, inbound e-mail, antivirus for uploads, monitoring, high availability.
+**What does the AI help get to see, and what stops it from inventing things?** Only the field catalog entry of the field asked about (label, help, type, required, validation, allowed values, and for status fields the statuses and transitions); never a ticket, customer or secret, and it has no tools. The instruction is fixed text, the question is confined to its own block, and the instruction says to answer only from that context and to admit what it does not contain. When the AI is down, slow, rate limited or refuses, the panel shows the field's static help instead, so the feature can fail without hurting the admin (D-025).
+
+**What is not done?** See "Out of scope and known limits" in the README: OAuth, a customer portal, inbound e-mail, antivirus for uploads, monitoring, high availability. The optional AI field help is built (off unless `AI_ENABLED=true`) but was not tried against the real API.
 
 ## What I would do next
 
-1. The AI support chat of section 12, grounded in the field catalog, with the limits the requirements list.
+1. Try the AI field help against the real API (it needs a key), measure its latency against the 10 second limit, and decide the model by quality and cost.
 2. A shared store for the login limits, and protection of `main` once the repository is public.
 3. Monitoring and alerting, and a staging environment on which the smoke test with both roles runs after every deployment.

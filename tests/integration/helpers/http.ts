@@ -3,6 +3,7 @@ import type express from 'express';
 import request from 'supertest';
 import { expect } from 'vitest';
 import { buildApp } from '../../../src/app.js';
+import type { AssistantProvider } from '../../../src/assistant/provider.js';
 import { createSessionPool } from '../../../src/auth/session.js';
 import { loadEnv } from '../../../src/config/env.js';
 import { MemoryStorage } from '../../../src/storage/memory-storage.js';
@@ -25,11 +26,11 @@ export function testEnv(overrides: Record<string, string> = {}) {
   });
 }
 
-export async function createTestApp(prisma: PrismaClient, options: { env?: Record<string, string>; storage?: MemoryStorage } = {}) {
+export async function createTestApp(prisma: PrismaClient, options: { env?: Record<string, string>; storage?: MemoryStorage; assistant?: AssistantProvider } = {}) {
   const env = testEnv(options.env);
   const pool = createSessionPool(env);
   const storage = options.storage ?? new MemoryStorage();
-  const app: express.Express = await buildApp({ env, prisma, sessionPool: pool, storage });
+  const app: express.Express = await buildApp({ env, prisma, sessionPool: pool, storage, assistant: options.assistant });
   return { app, pool, storage };
 }
 
