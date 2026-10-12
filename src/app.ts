@@ -64,6 +64,7 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
   return new AdminJS({
     rootPath: '/admin',
     logoutPath: '/auth/logout',
+    branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
     assets: { scripts: ['/auth/csrf-client.js'] },
     settings: { defaultPerPage: 25 },
@@ -116,6 +117,11 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   // The application lives under /admin; the bare address would otherwise be an empty 404 page.
   app.get('/', (_req, res) => {
     res.redirect(302, admin.options.rootPath);
+  });
+
+  // Public on purpose (the login page may show it) and before the session so it never creates one.
+  app.get('/auth/logo.png', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'logo.png'), { maxAge: '1d' });
   });
 
   app.use(createSessionMiddleware(env, sessionPool));
