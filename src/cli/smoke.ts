@@ -1,5 +1,9 @@
 // Smoke test of a running application over plain HTTP, with both roles.
 //
+// FOR A TEST ENVIRONMENT. Run it against a throwaway or staging instance when the project needs it (CI does, with
+// --write, against a disposable database). It is not part of the production deployment: it signs in with real
+// accounts, so against production use the read-only mode, by hand, with accounts you created for it.
+//
 //   SMOKE_BASE_URL=https://app.example SMOKE_ADMIN_EMAIL=... SMOKE_ADMIN_PASSWORD=... \
 //   [SMOKE_AGENT_EMAIL=... SMOKE_AGENT_PASSWORD=...] node dist/cli/smoke.js [--write]
 //
