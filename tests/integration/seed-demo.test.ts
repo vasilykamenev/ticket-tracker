@@ -136,7 +136,9 @@ describe('seed:verify', () => {
     expect(text).toMatch(/history ends in NEW, the ticket is CLOSED/);
 
     const newStatus = await prisma.ticketStatus.findUniqueOrThrow({ where: { code: 'NEW' } });
-    await prisma.ticket.update({ where: { id: ticket.id }, data: { statusId: newStatus.id } });
+    // Put the update time back too: verify without a reference date measures the 90-day window from the newest update,
+    // so leaving "now" there would make this test fail once a day has passed since REF.
+    await prisma.ticket.update({ where: { id: ticket.id }, data: { statusId: newStatus.id, updatedAt: ticket.updatedAt } });
     const repaired = await seedDemo(prisma, storage, env, options);
     expect(repaired['files uploaded']).toBe(1);
     expect((await verifyDemo(prisma, storage, { dataset })).problems).toEqual([]);
