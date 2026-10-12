@@ -1,0 +1,62 @@
+# The production stack on a VPS: the application (private, no published port) behind Caddy, which terminates HTTPS
+# with an automatically obtained and renewed certificate. Lives in /opt/ticket-tracker next to its .env.
+# deploy.sh starts it with IMAGE set to the image of the commit that was verified.
+name: ticket-tracker
+
+services:
+  app:
+    image: ${IMAGE:?set IMAGE, deploy.sh does}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+    # Everything the application needs is in the image and in memory: nothing to write to, nothing to escalate.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    networks: [internal]
+
+  caddy:
+    image: caddy:2.11.7
+    restart: unless-stopped
+    # Only started after the application; whether it is healthy is deploy.sh's business (it rolls back when it is not),
+    # and Caddy takes an unhealthy instance out of rotation by itself.
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # the certificates: keep them, Let's Encrypt limits how often they can be issued
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    networks: [internal]
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
