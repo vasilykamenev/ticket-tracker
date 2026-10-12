@@ -14,7 +14,7 @@ Where to look, what to click, and the likely questions with short answers. Crede
 2. **Scope.** Take the id of a ticket from another group (as admin, or from the seed) and open it as the agent: the answer is 404, the same as for a record that does not exist.
 3. **A ticket page.** The header line carries the number, status and priority; below are the fields, the history and the comments. Edit uses the same order, with the comments and the box for a new one just above Save.
 4. **Comments and files.** Add a comment, attach a PNG, a PDF and a text file (up to 5 per comment, 10 MiB each), download one (a 60-second link, `Content-Disposition: attachment`), remove one. An SVG or a renamed executable is refused.
-5. **Workflow.** Use **Change status**: only the transitions of the matrix are offered; moving to RESOLVED asks for a resolution (at least 10 characters), to UNRESOLVED for a reason, back from RESOLVED for a reopening reason. An agent cannot close a ticket (RESOLVED to CLOSED is ADMIN-only).
+5. **Workflow.** Use **Change status** (or the Status field of the edit form, which makes the change together with the other edits, D-027): only the transitions of the matrix are offered; moving to RESOLVED asks for a resolution (at least 10 characters), to UNRESOLVED for a reason, back from RESOLVED for a reopening reason. An agent cannot close a ticket (RESOLVED to CLOSED is ADMIN-only).
 6. **Bulk change.** Tick several tickets in the list, choose **Bulk Change Status**: the form lists them and offers only changes valid for all. Include one ticket the change does not suit: nothing is applied and the form names the refused ticket (`Ticket #123: ...`).
 7. **Optimistic locking.** Open the same ticket in two tabs, change the priority in the first and save, then save a change in the second: the second is refused because it started from an old version.
 8. **Sign in as an admin** (`admin1`). Users, agents, groups, memberships and statuses are administered here. Try to deactivate the only active admin, or to set your own role: both are refused. A change of a user's role, password or active state ends that user's sessions.
@@ -57,10 +57,10 @@ Where to look, what to click, and the likely questions with short answers. Crede
 
 **What does the AI help get to see, and what stops it from inventing things?** Only the field catalog entry of the field asked about (label, help, type, required, validation, allowed values, and for status fields the statuses and transitions); never a ticket, customer or secret, and it has no tools. The instruction is fixed text, the question is confined to its own block, and the instruction says to answer only from that context and to admit what it does not contain. When the AI is down, slow, rate limited or refuses, the panel shows the field's static help instead, so the feature can fail without hurting the admin (D-025).
 
-**What is not done?** See "Out of scope and known limits" in the README: OAuth, a customer portal, inbound e-mail, antivirus for uploads, monitoring, high availability. The optional AI field help is built (off unless `AI_ENABLED=true`) but was not tried against the real API.
+**What is not done?** See "Out of scope and known limits" in the README: self-registration through OAuth (sign-in with Google or GitHub exists for accounts an administrator created, D-026), a customer portal, inbound e-mail, antivirus for uploads, monitoring, high availability. The optional AI field help is built (off unless `AI_ENABLED=true`) and was tried against the real API with `claude-haiku-5-5`.
 
 ## What I would do next
 
-1. Try the AI field help against the real API (it needs a key), measure its latency against the 10 second limit, and decide the model by quality and cost.
+1. Compare the models for the AI field help by quality and cost on a set of questions (only Haiku 5.5 was tried, about 1.2 seconds), and decide the default.
 2. A shared store for the login limits, and protection of `main` once the repository is public.
 3. Monitoring and alerting, and a staging environment on which the smoke test with both roles runs after every deployment.
