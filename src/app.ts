@@ -13,6 +13,7 @@ import type pg from 'pg';
 import { componentLoader } from './admin/component-loader.js';
 import { authFormParser, createAuthRouter } from './auth/auth-routes.js';
 import { csrfProtection } from './auth/csrf.js';
+import type { Fetch } from './auth/oauth.js';
 import { requireUser } from './auth/require-user.js';
 import { createSessionMiddleware } from './auth/session.js';
 import type { Env } from './config/env.js';
@@ -53,6 +54,8 @@ export interface AppDeps {
   prisma: PrismaClient;
   sessionPool: pg.Pool;
   storage: ObjectStorage;
+  /** Replaces fetch for the OAuth providers (tests). */
+  oauthFetch?: Fetch;
   /** Replaces the configured AI provider (tests). */
   assistant?: AssistantProvider;
 }
@@ -103,7 +106,7 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
   });
 }
 
-export async function buildApp({ env, prisma, sessionPool, storage, assistant }: AppDeps): Promise<express.Express> {
+export async function buildApp({ env, prisma, sessionPool, storage, oauthFetch, assistant }: AppDeps): Promise<express.Express> {
   const admin = buildAdmin(prisma, { assistant: env.AI_ENABLED });
   // The bundle is built only when serving real traffic; tests exercise the JSON API.
   if (env.APP_ENV === 'production' || env.APP_ENV === 'demo') await admin.initialize();
@@ -152,7 +155,7 @@ export async function buildApp({ env, prisma, sessionPool, storage, assistant }:
   }
   app.use('/auth', authFormParser);
   app.use(csrfProtection(env.PUBLIC_URL));
-  app.use('/auth', createAuthRouter(prisma, env));
+  app.use('/auth', createAuthRouter(prisma, env, { fetch: oauthFetch }));
   // Mounted before AdminJS, whose body parser would otherwise see uploads. Session, CSRF and authentication
   // have already run; the upload route itself parses with bounded memory buffers.
   // The optional AI help shares the mount, so it sits behind the same session, CSRF and authentication checks.

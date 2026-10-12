@@ -59,11 +59,25 @@ const base = z.object({
   LOGIN_MAX_FAILED_PER_ACCOUNT: positiveInt(5),
   ...storageFields,
   MAX_CONCURRENT_UPLOADS: positiveInt(4),
+  // Sign-in with Google and/or GitHub. Each provider is on when both of its values are set.
+  GOOGLE_CLIENT_ID: optional(z.string().min(1)),
+  GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
+  GITHUB_CLIENT_ID: optional(z.string().min(1)),
+  GITHUB_CLIENT_SECRET: optional(z.string().min(1)),
   ...assistantFields,
 });
 
+/** A provider needs its id and its secret together; one without the other is a configuration mistake. */
+function checkOAuth(env: Partial<Record<'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'GITHUB_CLIENT_ID' | 'GITHUB_CLIENT_SECRET', string>>, ctx: z.RefinementCtx): void {
+  for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET']] as const) {
+    if (env[id] && !env[secret]) ctx.addIssue({ code: 'custom', path: [secret], message: `required when ${id} is set` });
+    if (env[secret] && !env[id]) ctx.addIssue({ code: 'custom', path: [id], message: `required when ${secret} is set` });
+  }
+}
+
 const schema = base.superRefine((env, ctx) => {
   checkStorage(env, ctx);
+  checkOAuth(env, ctx);
   if (env.AI_ENABLED && env.AI_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
     ctx.addIssue({ code: 'custom', path: ['ANTHROPIC_API_KEY'], message: 'required when AI_ENABLED=true' });
   }
