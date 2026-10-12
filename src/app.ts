@@ -6,6 +6,7 @@ import express from 'express';
 import type { ErrorRequestHandler } from 'express';
 import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
+import { dark, light, noSidebar } from '@adminjs/themes';
 import { Database, Resource } from '@adminjs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import type pg from 'pg';
@@ -67,6 +68,9 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
     branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
     assets: { scripts: ['/auth/csrf-client.js'] },
+    // The light theme is the default look (as on the AdminJS demo); viewers can switch with the moon icon.
+    defaultTheme: light.id,
+    availableThemes: [light, dark, noSidebar],
     settings: { defaultPerPage: 25 },
     // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
     dashboard: {
