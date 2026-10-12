@@ -78,6 +78,8 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
     // The light theme is the default look (as on the AdminJS demo); viewers can switch with the moon icon.
     defaultTheme: light.id,
     availableThemes: [light, dark, noSidebar],
+    // Extra menu entries (AdminJS lists pages under the resources).
+    pages: { MyOpenTickets: { component: Components.MyOpenTickets, icon: 'UserCheck' } },
     settings: { defaultPerPage: 25 },
     // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
     dashboard: {
@@ -86,7 +88,7 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
     },
     locale: {
       language: 'en',
-      translations: { en: catalogTranslations() },
+      translations: { en: { ...catalogTranslations(), pages: { MyOpenTickets: 'My open tickets' } } },
     },
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).

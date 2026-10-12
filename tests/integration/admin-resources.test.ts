@@ -120,6 +120,34 @@ describe('ticket filters, sorting and paging', () => {
     expect((await list(s, 'Ticket', `filters.updatedAt~~from=${past}&filters.customer=${customer.id}`)).body.records).toHaveLength(3);
   });
 
+  it('lists "my open tickets": assigned to the agent and in any status but CLOSED', async () => {
+    const closed = await tickets.create(admin.actor, { description: 'Done', customerId: customer.id, subject: 'Already closed for agent A', groupId: groupA.id, assignedAgentId: agentA.agent.id });
+    const closedStatus = await prisma.ticketStatus.findUniqueOrThrow({ where: { code: 'CLOSED' } });
+    await prisma.ticket.update({ where: { id: closed.id }, data: { statusId: closedStatus.id } });
+    const coworker = await tickets.create(admin.actor, { description: 'Not mine', customerId: customer.id, subject: 'Assigned to a colleague', groupId: groupA.id, assignedAgentId: agentA2.agent.id });
+
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const mine = ids(await list(a, 'Ticket', `filters.assignedAgent=${agentA.agent.id}&filters.status=__open__`));
+    expect(mine).toContain(ticketA.id);
+    expect(mine).not.toContain(closed.id); // closed
+    expect(mine).not.toContain(coworker.id); // somebody else's
+    expect(mine).not.toContain(ticketA2.id); // unassigned
+
+    // The same filter without the status part still shows the closed one, so the filter is what hides it.
+    expect(ids(await list(a, 'Ticket', `filters.assignedAgent=${agentA.agent.id}`))).toContain(closed.id);
+    // And it never reaches beyond the agent's own groups.
+    const b = await signIn(app, agentB.user.normalizedEmail);
+    expect(ids(await list(b, 'Ticket', `filters.assignedAgent=${agentA.agent.id}&filters.status=__open__`))).toEqual([]);
+  });
+
+  it('puts "My open tickets" in the menu for everyone who works in the panel', async () => {
+    for (const email of [agentA.user.normalizedEmail, admin.user.normalizedEmail]) {
+      const html = (await (await signIn(app, email)).get('/admin')).text;
+      expect(html).toMatch(/"name":"MyOpenTickets"/);
+      expect(html).toContain('My open tickets');
+    }
+  });
+
   it('treats malformed filter values as "no match", not as a server error', async () => {
     const s = await signIn(app, admin.user.normalizedEmail);
     for (const q of ['filters.group=not-a-uuid', 'filters.number=abc', 'filters.priority=BOGUS', 'filters.customer=%27%3B--']) {

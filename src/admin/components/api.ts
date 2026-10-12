@@ -36,8 +36,9 @@ export async function bulkAction<T>(resourceId: string, actionName: string, reco
 
 /** Where the admin lives, taken from the current URL (works for any rootPath). */
 export function adminRoot(): string {
-  const at = window.location.pathname.indexOf('/resources/');
-  return at >= 0 ? window.location.pathname.slice(0, at) : window.location.pathname.replace(/\/$/, '');
+  const { pathname } = window.location;
+  const at = ['/resources/', '/pages/'].map((part) => pathname.indexOf(part)).find((i) => i >= 0);
+  return at !== undefined ? pathname.slice(0, at) : pathname.replace(/\/$/, '');
 }
 
 export function ticketUrl(ticketId: string): string {
