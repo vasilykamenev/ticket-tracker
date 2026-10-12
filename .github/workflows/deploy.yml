@@ -4,14 +4,13 @@ name: deploy
 #   image    builds the production image and publishes it to GHCR (:<sha> and :latest)
 #   migrate  applies the database migrations with the MIGRATOR role (the application never has those credentials)
 #   deploy   copies deploy/vps/ to the server and runs deploy.sh over SSH: pull, start, wait for healthy, roll back if not
-#   verify   waits for the deployment and smoke-tests it with both roles, and checks object storage
+#   verify   checks object storage and waits until the deployment answers (no smoke test: it needs accounts of both roles)
 #
 # All steps that touch production use the `production` environment: its secrets, and its protection rules (add
 # required reviewers there to make every deployment wait for an approval).
 #
 # Environment secrets:  DIRECT_URL (migrator role), DATABASE_URL (runtime role), S3_ENDPOINT, S3_REGION, S3_BUCKET,
-#                       S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, SMOKE_ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD,
-#                       optionally SMOKE_AGENT_EMAIL, SMOKE_AGENT_PASSWORD
+#                       S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
 #                       VPS_HOST (address), VPS_USER (deploy), VPS_SSH_KEY (private key), VPS_HOST_KEY (the server's
 #                       public host key, from `ssh-keyscan -t ed25519 <address>`: pinned, so nothing can impersonate it)
 # Variable:             PRODUCTION_URL  (https://<DOMAIN> of the running application)
@@ -157,10 +156,6 @@ jobs:
     env:
       IMAGE: ${{ needs.image.outputs.image }}
       SMOKE_BASE_URL: ${{ vars.PRODUCTION_URL }}
-      SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
-      SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
-      SMOKE_AGENT_EMAIL: ${{ secrets.SMOKE_AGENT_EMAIL }}
-      SMOKE_AGENT_PASSWORD: ${{ secrets.SMOKE_AGENT_PASSWORD }}
       S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
       S3_REGION: ${{ secrets.S3_REGION }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
@@ -177,7 +172,7 @@ jobs:
       - name: Wait for the deployment to answer
         run: |
           if [ -z "$SMOKE_BASE_URL" ]; then
-            echo "::notice::No PRODUCTION_URL variable: nothing to smoke-test yet."
+            echo "::notice::No PRODUCTION_URL variable: nothing to wait for."
             exit 0
           fi
           # The certificate is issued a moment after the first start of a new server.
@@ -187,7 +182,3 @@ jobs:
           done
           echo "::error::$SMOKE_BASE_URL did not become ready within ten minutes."
           exit 1
-      - name: Smoke test with both roles (read only)
-        run: |
-          [ -n "$SMOKE_BASE_URL" ] || exit 0
-          docker run --rm -e SMOKE_BASE_URL -e SMOKE_ADMIN_EMAIL -e SMOKE_ADMIN_PASSWORD -e SMOKE_AGENT_EMAIL -e SMOKE_AGENT_PASSWORD "$IMAGE" node dist/cli/smoke.js
