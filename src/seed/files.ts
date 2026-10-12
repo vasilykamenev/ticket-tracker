@@ -127,13 +127,13 @@ const TEXT_LINES = [
   '2026-10-01 09:12:44 INFO  request accepted',
   '2026-10-01 09:12:45 WARN  retrying after timeout (attempt 2 of 3)',
   '2026-10-01 09:12:47 ERROR export failed: connection reset by peer',
-  'Заметка: ошибка воспроизводится только при больших выгрузках.',
-  'Шаги: открыть отчёт, нажать «Экспорт», дождаться сообщения об ошибке.',
+  'Note: the error only happens with large exports.',
+  'Steps: open the report, click Export, wait for the error message.',
   'Browser: Chrome 130, Windows 11, window 1440x900',
-  'Номер заказа: 48213, сумма не совпадает с итогом в личном кабинете.',
+  'Order number: 48213, the amount does not match the total in the account page.',
 ];
 
-/** Plain UTF-8 text with Cyrillic lines, about `targetBytes` long. */
+/** Plain UTF-8 text, about `targetBytes` long. */
 export function makeText(rng: Rng, targetBytes: number): Buffer {
   let text = 'Demo log excerpt (fictional)\n';
   while (Buffer.byteLength(text) < targetBytes - 80) text += `${rng.pick(TEXT_LINES)} #${rng.int(1000, 9999)}\n`;

@@ -1,11 +1,48 @@
 # Support Ticket Tracker (com.berney)
 
-Internal support-staff application: AdminJS + Express + Prisma on Supabase PostgreSQL and Storage.
+An internal tool for a support team: customer requests are entered by staff, worked through a fixed workflow by
+agents, and administered by admins. AdminJS + Express + Prisma on Supabase PostgreSQL and Storage, delivered as one
+Docker container behind Caddy (automatic HTTPS) on a VPS.
 
-Status: project skeleton only. Requirements: `docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md`. Decisions: `docs/decisions.md`. Progress: `docs/acceptance.md`.
+- **Live:** https://3130058.vpsnet.cloud (sign in at `/admin`). Reviewer accounts are shared separately; the repository holds no passwords.
+- **Requirements:** `docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md` · **Decisions:** `docs/decisions.md` · **Progress and evidence:** `docs/acceptance.md` · **Notes for the review:** `docs/review.md`
 
-## Tested versions (stage 1)
-Node 22, TypeScript 7.0.2, AdminJS 7.8.17, @adminjs/express 6.1.1, @adminjs/prisma 5.0.4, Prisma 6.19.3, Express 4.21.2, PostgreSQL 17. Details and constraints: `docs/decisions.md`.
+## What it does
+
+- **Tickets** with a subject, description (up to 1000 characters), priority, customer, group, assignee, status, resolution or unresolved reason, and a full history. Lists have search, filters, sorting and pagination (checked with 2000 tickets).
+- **A fixed workflow** of six system statuses (NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, UNRESOLVED, CLOSED) with an explicit transition matrix, required reasons and ADMIN-only steps. Every change is one transaction: the ticket, its version and its history entry.
+- **Inline comments** on the ticket page (create, edit by the author or an admin, never on CLOSED or UNRESOLVED tickets) and **attachments** (PNG, JPEG, PDF, UTF-8 text; 10 MiB; up to 5 per comment) in a private Supabase bucket.
+- **Bulk status change** for up to 100 selected tickets, all-or-nothing, naming every refused ticket.
+- **Customers, users, agents, groups, memberships and statuses** are administered in the same panel; the dashboard shows live counts.
+- **Roles:** ADMIN sees and manages everything; AGENT sees and works only the tickets of their groups. The scope is applied in the services, so lists, counts, search, history and downloads all obey it, and an out-of-scope id answers 404.
+- **Optimistic locking:** every edit carries the version it started from; a concurrent change is refused instead of overwritten.
+
+## How it is built
+
+| Part | Choice |
+| --- | --- |
+| Admin UI | AdminJS 7 with the light theme and custom React components (ticket header, inline comments, history, forms) |
+| Server | Node 22, Express 4, TypeScript; one application and one container |
+| Data | Prisma 6 on Supabase PostgreSQL (schema `support`); two database roles: the migrator (owns the schema, used only to migrate) and the runtime role (rows only, no DDL) |
+| Files | Supabase Storage through its S3 API, private bucket, 60-second presigned downloads; nothing is written to the server's disk |
+| Sessions | `express-session` in PostgreSQL, one login controller of our own |
+| Delivery | GitHub Actions: CI on `develop`, the secret scan on `main`, then image, migrations and an SSH deployment with a health check and automatic rollback; Caddy terminates HTTPS |
+
+The business rules live in domain services (`src/domain`) and policies (`src/policies`), not in AdminJS hooks. AdminJS resources are guarded wrappers that call them, and the generic edit and delete actions that could bypass the workflow are switched off. Field labels and help texts come from one catalog (`src/admin/field-catalog.ts`).
+
+## Security
+
+- **Passwords:** Argon2id with m = 19 456 KiB (19 MiB), t = 2, p = 1, the OWASP minimum. An unknown e-mail and a wrong password give the same error. The parameters are to be revisited against the production host's CPU (D-008).
+- **Sessions:** server-side, in PostgreSQL; `HttpOnly`, `SameSite=Lax`, `Secure` in production; 30 minutes idle, 8 hours absolute. The user is reloaded from the database on every request, and a change of role, password or active state bumps `sessionVersion` and ends the sessions.
+- **CSRF:** a synchronizer token plus a mandatory `Origin` check on every unsafe method (D-007).
+- **Login limits:** 20 attempts per IP and 5 failed attempts per account in 15 minutes (in memory, single replica).
+- **Authorization at three levels:** the loaded active user, hidden resources and buttons, and checks of role and scope in every service call. A user cannot raise their own role or deactivate the last active admin.
+- **Uploads:** a dedicated route with bounded memory buffers (at most 4 uploads at once); the type is decided from the bytes (extension, declared type and content must agree; SVG, HTML and archives are refused); a storage failure gives a generic 502, so provider text never reaches the user.
+- **Headers and secrets:** baseline security headers on every route and no `X-Powered-By`. There is no CSP, because AdminJS renders inline scripts (documented in `src/http/security-headers.ts`). Application secrets live only in `/opt/ticket-tracker/.env` on the server, never in the repository; `gitleaks` scans the whole history on every push.
+
+## Tested versions
+
+Node 22, TypeScript 7.0.2, AdminJS 7.8.17, @adminjs/express 6.1.1, @adminjs/prisma 5.0.4, @adminjs/themes 1.0.1, Prisma 6.19.3, Express 4.21.2, Argon2 0.45, Zod 4, PostgreSQL 17. Pinned in `package-lock.json`; details and constraints in `docs/decisions.md` (D-002).
 
 ## Local development
 ```
@@ -21,10 +58,15 @@ npm run dev
 Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at least 32 characters.
 
 ## Tests
-`npm test` runs unit and integration tests. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service. Use a throwaway database: some tests briefly switch other active administrators off (and always restore them).
+`npm test` runs unit and integration tests: 28 files, about 350 cases covering the workflow matrix, roles and scope, optimistic locking, comments, attachments and the reconcile job, bulk changes, authentication and CSRF, the security headers and the demo dataset. Integration tests need a database with migrations applied (`DATABASE_URL`, e.g. the `dev:db` instance); CI uses a Postgres service. Use a throwaway database: some tests briefly switch other active administrators off while they run. The suites for the workflow, attachments and bulk changes were mutation-checked (the guard under test was removed on purpose and the suite had to fail).
 
-## Authentication
-Local staff accounts, Argon2id hashes, PostgreSQL sessions, CSRF token + Origin check, login rate limits per IP and per account (in-memory, single replica). See `docs/decisions.md` D-006..D-008.
+The `ci` workflow (pull requests to `develop` and pushes to `develop`) type-checks, tests, builds the production image, runs it against PostgreSQL and smoke-tests it with both roles. The smoke test (`smoke.js`) is for a test environment: CI runs it against a throwaway database, and it is run by hand against staging when needed.
+
+## Out of scope and known limits
+- **Not built:** OAuth sign-in (a new identity must not become an administrator by default and would need an invitation or an admin's approval, so it was deferred); a customer portal or customer login; inbound e-mail; antivirus scanning of uploads; comment deletion (disabled by design); a background job for bulk changes of more than 100 tickets (use batches); monitoring and alerting; high availability (one server, a few seconds of unavailability while the container is replaced); a shared store for the login limits (needed once there is more than one replica).
+- **AI support chat (optional bonus, requirements section 12): not implemented yet.** `AI_ENABLED=false`. What is ready for it: the field catalog with labels, help texts and limits is the single source an assistant would be grounded in, and the setting flag exists. The bonus was left until the mandatory scope, the live deployment and the review material were complete.
+- **Customers are a shared directory** among staff, not a multi-tenant model: an agent can see the names and e-mail addresses of known customers but cannot reach out-of-scope tickets through them.
+- **A direct push to `main` is deployed after the secret scan only**, without the tests (they ran on `develop`). Branch protection is planned for when the repository becomes public (`docs/acceptance.md`).
 
 ## Layout
 See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `src/cli/` the seed, admin and storage commands (compiled into the image as `dist/cli/*.js`), `tests/` unit, integration and e2e suites.

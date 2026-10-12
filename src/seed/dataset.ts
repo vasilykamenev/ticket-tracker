@@ -247,8 +247,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   const cRng = root.fork('customers');
   const customers: SeedCustomer[] = [];
   for (let i = 0; i < sizes.customers; i++) {
-    const ru = cRng.chance(0.3);
-    let name = ru ? `${cRng.pick(names.RU_FIRST)} ${cRng.pick(names.RU_LAST)}` : `${cRng.pick(names.EN_FIRST)} ${cRng.pick(names.EN_LAST)}`;
+    let name = `${cRng.pick(names.EN_FIRST)} ${cRng.pick(names.EN_LAST)}`;
     if (i >= SIMILAR_NAMES.from && i < SIMILAR_NAMES.to && i % 2 === 1) {
       // Similar names on purpose: the previous customer's name with one letter dropped from the surname.
       const [first, last] = customers[i - 1]!.name.split(' ');
@@ -280,7 +279,6 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     const group = r.weighted(groups.map((g, i) => [g, GROUP_WEIGHTS[i]!] as const));
     const members = membersByGroup.get(group.id)!;
     const customer = r.pick(customers);
-    const ru = r.chance(0.25);
     const priority = r.weighted<Priority>([['LOW', 20], ['NORMAL', 50], ['HIGH', 22], ['URGENT', 8]]);
     const creatorUser = r.chance(0.85) ? userOfAgent.get(r.pick(members).id)! : r.pick(admins).id;
 
@@ -302,8 +300,8 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     const stepTimes = spread(r, createdAtMs, ref.getTime() - 2 * MINUTE, steps.length);
 
     let state = {
-      subject: subjectFor(r, ru, index),
-      description: describe(r, ru),
+      subject: subjectFor(r, index),
+      description: describe(r),
       priority,
       groupId: group.id,
       assignedAgentId: assignedAtCreation ? firstAssignee.id : (null as string | null),
@@ -360,7 +358,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     // Comments only in the spans in which the ticket was open for them.
     const lastEvent = steps.length > 0 ? stepTimes[steps.length - 1]! : createdAtMs;
     const windows = openWindows(createdAtMs, ref.getTime(), frozenSpans);
-    const ticketComments = makeComments(cmRng.fork(`c${index}`), id, index, ticketId, counts[index]!, windows, state.assignedAgentId, members, userOfAgent, admins, ru);
+    const ticketComments = makeComments(cmRng.fork(`c${index}`), id, index, ticketId, counts[index]!, windows, state.assignedAgentId, members, userOfAgent, admins);
     comments.push(...ticketComments);
     const lastComment = ticketComments.reduce((latest, c) => Math.max(latest, c.updatedAt.getTime()), 0);
 
@@ -478,32 +476,31 @@ function commentCounts(r: Rng, tickets: number, total: number): number[] {
 type TimeSpan = { from: number; to: number };
 
 function agentName(i: number): string {
-  if (i % 4 === 3) return `${names.RU_FIRST[i % names.RU_FIRST.length]} ${names.RU_LAST[(i * 5) % names.RU_LAST.length]}`;
   return `${names.EN_FIRST[i % names.EN_FIRST.length]} ${names.EN_LAST[(i * 7) % names.EN_LAST.length]}`;
 }
 
-function describe(r: Rng, ru: boolean): string {
-  const { details } = names.textsFor(ru);
+function describe(r: Rng): string {
+  const { details } = names.TEXTS;
   return r.chance(0.7) ? `${r.pick(details)} ${r.pick(details)}` : r.pick(details);
 }
 
-function subjectFor(r: Rng, ru: boolean, index: number): string {
-  const area = r.pick(names.textsFor(ru).areas);
-  const problem = r.pick(names.textsFor(ru).problems);
-  const base = ru ? `${area[0]!.toUpperCase()}${area.slice(1)}: ${problem}` : `Problem: ${area} ${problem}`;
+function subjectFor(r: Rng, index: number): string {
+  const area = r.pick(names.TEXTS.areas);
+  const problem = r.pick(names.TEXTS.problems);
+  const base = `Problem: ${area} ${problem}`;
   if (index % LONG_SUBJECT_EVERY !== 3) return base;
   // A deliberately long subject (up to the 200 characters the form allows).
   let long = base;
-  while (long.length < 150) long += `; ${r.pick(names.textsFor(ru).problems)}`;
+  while (long.length < 150) long += `; ${r.pick(names.TEXTS.problems)}`;
   return long.length <= SUBJECT_MAX ? long : long.slice(0, 197).replace(/[\s;:,]+\S*$/, '') + '...';
 }
 
-function commentBody(r: Rng, ru: boolean): string {
-  const pool = ru && r.chance(0.85) ? names.RU_COMMENTS : names.EN_COMMENTS;
+function commentBody(r: Rng): string {
+  const pool = names.EN_COMMENTS;
   if (r.chance(0.03)) {
     // A long, multi-paragraph note.
     const parts: string[] = [];
-    while (parts.join('\n\n').length < LONG_COMMENT.minChars) parts.push(Array.from({ length: r.int(2, 4) }, () => r.pick(names.textsFor(ru).details)).join(' '));
+    while (parts.join('\n\n').length < LONG_COMMENT.minChars) parts.push(Array.from({ length: r.int(2, 4) }, () => r.pick(names.TEXTS.details)).join(' '));
     return parts.join('\n\n').slice(0, Math.min(COMMENT_MAX, LONG_COMMENT.maxChars));
   }
   return r.chance(0.35) ? `${r.pick(pool)} ${r.pick(pool)}` : r.pick(pool);
@@ -520,7 +517,6 @@ function makeComments(
   members: SeedAgent[],
   userOfAgent: Map<string, string>,
   admins: SeedUser[],
-  ru: boolean,
 ): SeedComment[] {
   if (count === 0) return [];
   // Keep clear of the edges of a window: the ticket exists for 30 s before the first comment and may be
@@ -546,7 +542,7 @@ function makeComments(
       id: id('comment', ticketIndex + 1, k + 1),
       ticketId,
       authorUserId: author,
-      body: commentBody(r, ru),
+      body: commentBody(r),
       version: edited ? 2 : 1,
       createdAt: new Date(at),
       updatedAt: new Date(edited ? at + r.int(2 * MINUTE, Math.min(60 * MINUTE, window.to - at - MINUTE)) : at),

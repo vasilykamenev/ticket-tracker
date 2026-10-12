@@ -264,7 +264,6 @@ export function checkDataset(view: DatasetView, options: { referenceDate?: Date;
   const perTicket = [...commentsOf.values()].map((l) => l.length);
   const special = {
     'long subjects (150+ chars)': view.tickets.filter((t) => t.subject.length >= 150).length,
-    'Cyrillic subjects': view.tickets.filter((t) => /[А-Яа-яЁё]/.test(t.subject)).length,
     'customers without phone': view.customers.filter((c) => c.phone === null).length,
     'tickets with more than one page of comments': perTicket.filter((n) => n > 10).length,
     'tickets with 20 comments': perTicket.filter((n) => n === MAX_COMMENTS_PER_TICKET).length,
