@@ -1,5 +1,5 @@
 name: deploy
-# Production delivery to a VPS. Runs by itself after the `ci` workflow succeeds on `main`, or by hand (Actions > deploy > Run).
+# Production delivery to a VPS. Runs by itself after the `secrets-scan` workflow succeeds on a push to `main` (the tests ran on the pull request), or by hand (Actions > deploy > Run).
 #
 #   image    builds the production image and publishes it to GHCR (:<sha> and :latest)
 #   migrate  applies the database migrations with the MIGRATOR role (the application never has those credentials)
@@ -18,7 +18,7 @@ name: deploy
 # The application's own secrets live on the server, in /opt/ticket-tracker/.env; this workflow never writes them.
 on:
   workflow_run:
-    workflows: [ci]
+    workflows: [secrets-scan]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   image:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +43,7 @@ jobs:
       revision: ${{ steps.revision.outputs.sha }}
     steps:
       - id: revision
-        # The commit CI has just verified (for a manual run, the commit that was selected).
+        # The commit the secret scan has just passed (for a manual run, the commit that was selected).
         env:
           REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: echo "sha=$REVISION" >> "$GITHUB_OUTPUT"
