@@ -180,3 +180,7 @@ Files are stored in a **private** Supabase Storage bucket `ticket-attachments` t
 - `npm run storage:check`: writes, reads back, signs and deletes a small object; prints no secrets.
 - `npm run storage:reconcile -- --dry-run`: reports what is out of line between the database and the bucket after crashes (stale PENDING/FAILED/DELETING rows, objects without a row, rows without an object); without `--dry-run` it fixes them. Schedule it (a GitHub Actions cron is planned for the deployment stage).
 - Limits: one file per upload, 10 MiB, 5 files per comment; PNG, JPEG, PDF and UTF-8 text.
+
+## License
+
+MIT, see `LICENSE`.
