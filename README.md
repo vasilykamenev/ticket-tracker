@@ -59,6 +59,8 @@ docker run --rm --env-file prod.env IMAGE node dist/cli/storage-reconcile.js --d
 docker run --rm -e SMOKE_BASE_URL=https://... -e SMOKE_ADMIN_EMAIL=... -e SMOKE_ADMIN_PASSWORD=... [-e SMOKE_AGENT_EMAIL=... -e SMOKE_AGENT_PASSWORD=...] IMAGE node dist/cli/smoke.js
 ```
 
+The smoke test (`smoke.js`) is for a test environment: CI runs it against a throwaway database (with `--write`), and it is run by hand against staging when the project needs it. The production deployment does not run it (D-024); against production use it read only (without `--write`) with accounts created for the purpose.
+
 The commands behind the npm scripts are compiled into the image as `dist/cli/*.js`. CI builds the image, runs it against PostgreSQL and smoke-tests it with both roles; `deploy` publishes it to GHCR and `storage-reconcile` runs nightly once enabled. Details: D-018.
 
 ## Production on Supabase
