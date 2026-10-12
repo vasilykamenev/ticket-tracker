@@ -14,6 +14,9 @@ type Where = Record<string, unknown>;
 /** Value of a reference filter meaning "no value" (e.g. unassigned tickets). */
 export const NONE = '__none__';
 
+/** Value of the status filter meaning every status except CLOSED ("open" tickets). */
+export const NOT_CLOSED = '__open__';
+
 const ALLOWED_PAGE_SIZES = [25, 50, 100];
 const MAX_PAGE_SIZE = 100;
 const uuid = z.uuid();
@@ -180,6 +183,7 @@ export class GuardedResource extends Resource {
         const column = property.foreignColumnName();
         if (!column) continue;
         if (value === NONE) where[column] = null;
+        else if (value === NOT_CLOSED && name === 'status') where.status = { code: { not: 'CLOSED' } };
         else if (uuid.safeParse(value).success) where[column] = value;
         else return IMPOSSIBLE;
       } else if (type === 'boolean') {

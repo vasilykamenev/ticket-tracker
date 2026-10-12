@@ -11,6 +11,7 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 
 - **Tickets** with a subject, description (up to 1000 characters), priority, customer, group, assignee, status, resolution or unresolved reason, and a full history. Lists have search, filters, sorting and pagination (checked with 2000 tickets).
 - **A fixed workflow** of six system statuses (NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, UNRESOLVED, CLOSED) with an explicit transition matrix, required reasons and ADMIN-only steps. Every change is one transaction: the ticket, its version and its history entry.
+- **My open tickets** in the side menu: the ticket list filtered to the signed-in agent as the assignee and every status except CLOSED (the status filter accepts `__open__` for that). AdminJS can only put a page in the menu, so the entry is a small page that sends the person on to the filtered list. Administrators have no agent profile, so they get a short explanation and use the Tickets list.
 - **Inline comments** on the ticket page (create, edit by the author or an admin, never on CLOSED or UNRESOLVED tickets) and **attachments** (PNG, JPEG, PDF, UTF-8 text; 10 MiB; up to 5 per comment) in a private Supabase bucket.
 - **Bulk status change** for up to 100 selected tickets, all-or-nothing, naming every refused ticket.
 - **Customers, users, agents, groups, memberships and statuses** are administered in the same panel; the dashboard shows live counts.
