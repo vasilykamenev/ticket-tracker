@@ -1,8 +1,11 @@
 name: ci
+# Tests everything that goes into `develop`: pull requests to it and the pushes to it. `main` takes only what
+# `develop` already passed, so it is not tested again; its deployment waits for the secret scan (deploy.yml).
 on:
   push:
-    branches: [main]
+    branches: [develop]
   pull_request:
+    branches: [develop]
 
 permissions:
   contents: read
