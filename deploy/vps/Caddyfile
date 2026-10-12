@@ -1,0 +1,26 @@
+# HTTPS in front of the application. Caddy obtains and renews the certificate for {$DOMAIN} by itself (Let's Encrypt)
+# and redirects http:// to https://. The application is reached over the internal network only.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# An upload is at most 10 MiB plus the multipart framing; the application checks it again.
+	request_body {
+		max_size 12MB
+	}
+
+	reverse_proxy app:3000 {
+		# A failing instance is taken out of rotation instead of being sent traffic, and put back within seconds.
+		health_uri /health/live
+		health_interval 5s
+		health_timeout 3s
+		# While a new version starts (or an old one is restored) a request waits briefly instead of getting a 503.
+		lb_try_duration 15s
+		lb_try_interval 500ms
+	}
+
+	header -Server
+}
