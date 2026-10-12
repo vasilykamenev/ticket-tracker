@@ -6,7 +6,7 @@ Where to look, what to click, and the likely questions with short answers. Crede
 
 - **Live:** https://3130058.vpsnet.cloud (HTTPS, certificate from Let's Encrypt through Caddy). Sign in at `/admin`.
 - **Demo data** (loaded on the server with `./tools/seed.sh`, D-023): 17 accounts (2 admins `admin1@example.test`, `admin2@example.test`; 15 agents `agent01@example.test` ... `agent15@example.test`), 300 customers, 2000 tickets, 10 000 comments and 200 files, all on the `example.test` domain. The passwords are the two values the owner chose when loading the data and are handed over separately.
-- **Code:** the GitHub repository (branches: `develop` is tested by CI, `main` is what runs in production). Progress and evidence: `docs/acceptance.md`; every non-obvious choice: `docs/decisions.md`.
+- **Code:** the GitHub repository (branches: `develop` is tested by CI, `main` is what runs in production). Progress and evidence: `docs/acceptance.md`; every non-obvious choice: `docs/decisions.md`. How it works, with diagrams: `docs/architecture.md` (parts and request flow), `docs/database.md` (data model), `docs/authentication.md` (sign-in flows, sessions, roles), `docs/workflow.md` (statuses and rules), `docs/operations.md` (delivery and operation).
 
 ## A ten-minute walk through the live system
 
@@ -62,5 +62,5 @@ Where to look, what to click, and the likely questions with short answers. Crede
 ## What I would do next
 
 1. Compare the models for the AI field help by quality and cost on a set of questions (only Haiku 5.5 was tried, about 1.2 seconds), and decide the default.
-2. A shared store for the login limits, and protection of `main` once the repository is public.
+2. A shared store for the login limits.
 3. Monitoring and alerting, and a staging environment on which the smoke test with both roles runs after every deployment.

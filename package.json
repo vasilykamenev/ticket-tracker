@@ -2,6 +2,7 @@
   "name": "@berney/support-ticket-tracker",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "com.berney Support Ticket Tracker: AdminJS + Express + Prisma + Supabase",
   "type": "module",
   "engines": {
