@@ -86,22 +86,55 @@ export class TicketService {
   async update(actor: Actor, ticketId: string, expectedVersion: number, input: unknown): Promise<TicketWithStatus> {
     const data = parseInput(updateTicketSchema, input);
     const version = parseInput(versionSchema, expectedVersion);
+    return this.prisma.$transaction(async (tx) => this.updateInTx(tx, actor, await loadScope(tx, actor), ticketId, version, data));
+  }
+
+  /**
+   * The edit form with its status field: an optional status change and the ordinary edits in one transaction, so a
+   * refused half leaves nothing behind. The status moves first (it can reopen a frozen ticket, which the edits need),
+   * each half keeps its own history entry, and the edits see the version the status change produced.
+   */
+  async updateWithStatus(actor: Actor, ticketId: string, expectedVersion: number, fields: unknown, change: unknown): Promise<TicketWithStatus> {
+    const version = parseInput(versionSchema, expectedVersion);
+    const hasFields = fields !== undefined && Object.keys(fields as object).length > 0;
+    const data = hasFields ? parseInput(updateTicketSchema, fields) : undefined;
     return this.prisma.$transaction(async (tx) => {
-      const ticket = await this.loadForActor(tx, await loadScope(tx, actor), ticketId);
-      this.assertVersion(ticket, version);
-      this.assertNotFrozen(ticket);
-      await this.assertGroupActive(tx, ticket.groupId);
-
-      const changes: Prisma.TicketUpdateManyMutationInput = {};
-      if (data.subject !== undefined && data.subject !== ticket.subject) changes.subject = data.subject;
-      if (data.description !== undefined && data.description !== ticket.description) changes.description = data.description;
-      if (data.priority !== undefined && data.priority !== ticket.priority) changes.priority = data.priority;
-      if (Object.keys(changes).length === 0) throw new ValidationError('no_change', 'Nothing to change');
-
-      const updated = await this.bump(tx, ticket, version, changes);
-      await this.addHistory(tx, ticket.id, actor, 'UPDATED', snapshot(ticket), snapshot(updated), null);
-      return updated;
+      const scope = await loadScope(tx, actor);
+      let current: TicketWithStatus | undefined;
+      let at = version;
+      if (change !== undefined) {
+        current = await this.changeStatusInTx(tx, actor, scope, ticketId, at, change);
+        at = current.version;
+      }
+      if (data) {
+        try {
+          return await this.updateInTx(tx, actor, scope, ticketId, at, data);
+        } catch (err) {
+          // The form always sends its fields; with a status change already made, unchanged fields are not an error.
+          if (current && err instanceof ValidationError && err.code === 'no_change') return current;
+          throw err;
+        }
+      }
+      if (!current) throw new ValidationError('no_change', 'Nothing to change');
+      return current;
     });
+  }
+
+  private async updateInTx(tx: Tx, actor: Actor, scope: Scope, ticketId: string, version: number, data: z.infer<typeof updateTicketSchema>): Promise<TicketWithStatus> {
+    const ticket = await this.loadForActor(tx, scope, ticketId);
+    this.assertVersion(ticket, version);
+    this.assertNotFrozen(ticket);
+    await this.assertGroupActive(tx, ticket.groupId);
+
+    const changes: Prisma.TicketUpdateManyMutationInput = {};
+    if (data.subject !== undefined && data.subject !== ticket.subject) changes.subject = data.subject;
+    if (data.description !== undefined && data.description !== ticket.description) changes.description = data.description;
+    if (data.priority !== undefined && data.priority !== ticket.priority) changes.priority = data.priority;
+    if (Object.keys(changes).length === 0) throw new ValidationError('no_change', 'Nothing to change');
+
+    const updated = await this.bump(tx, ticket, version, changes);
+    await this.addHistory(tx, ticket.id, actor, 'UPDATED', snapshot(ticket), snapshot(updated), null);
+    return updated;
   }
 
   /**
