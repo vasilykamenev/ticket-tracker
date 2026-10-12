@@ -13,6 +13,7 @@ import type pg from 'pg';
 import { componentLoader } from './admin/component-loader.js';
 import { authFormParser, createAuthRouter } from './auth/auth-routes.js';
 import { csrfProtection } from './auth/csrf.js';
+import type { Fetch } from './auth/oauth.js';
 import { requireUser } from './auth/require-user.js';
 import { createSessionMiddleware } from './auth/session.js';
 import type { Env } from './config/env.js';
@@ -22,6 +23,10 @@ import { ticketResource } from './admin/resources/ticket.js';
 import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
 import { AttachmentService } from './domain/attachments/attachment-service.js';
+import { AssistantLimiter } from './assistant/limits.js';
+import { type AssistantProvider, createProviderFromEnv } from './assistant/provider.js';
+import { AssistantService } from './assistant/service.js';
+import { createAssistantRouter } from './http/routes/assistant.js';
 import { limitBulkSelection } from './http/bulk-limits.js';
 import { securityHeaders } from './http/security-headers.js';
 import { createAttachmentRouter } from './http/routes/attachments.js';
@@ -49,9 +54,13 @@ export interface AppDeps {
   prisma: PrismaClient;
   sessionPool: pg.Pool;
   storage: ObjectStorage;
+  /** Replaces fetch for the OAuth providers (tests). */
+  oauthFetch?: Fetch;
+  /** Replaces the configured AI provider (tests). */
+  assistant?: AssistantProvider;
 }
 
-export function buildAdmin(prisma: PrismaClient): AdminJS {
+export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean } = {}): AdminJS {
   const tickets = new TicketService(prisma);
   const customers = new CustomerService(prisma);
   const queries = new TicketQueries(prisma);
@@ -67,10 +76,13 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
     logoutPath: '/auth/logout',
     branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
-    assets: { scripts: ['/auth/csrf-client.js'] },
+    // The help widget (AI_ENABLED=true) comes after the CSRF script, whose patched fetch it uses.
+    assets: { scripts: ['/auth/csrf-client.js', ...(options.assistant ? ['/auth/assistant-widget.js'] : [])] },
     // The light theme is the default look (as on the AdminJS demo); viewers can switch with the moon icon.
     defaultTheme: light.id,
     availableThemes: [light, dark, noSidebar],
+    // Extra menu entries (AdminJS lists pages under the resources).
+    pages: { MyOpenTickets: { component: Components.MyOpenTickets, icon: 'UserCheck' } },
     settings: { defaultPerPage: 25 },
     // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
     dashboard: {
@@ -79,7 +91,7 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
     },
     locale: {
       language: 'en',
-      translations: { en: catalogTranslations() },
+      translations: { en: { ...catalogTranslations(), pages: { MyOpenTickets: 'My open tickets' } } },
     },
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).
@@ -94,8 +106,8 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
   });
 }
 
-export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): Promise<express.Express> {
-  const admin = buildAdmin(prisma);
+export async function buildApp({ env, prisma, sessionPool, storage, oauthFetch, assistant }: AppDeps): Promise<express.Express> {
+  const admin = buildAdmin(prisma, { assistant: env.AI_ENABLED });
   // The bundle is built only when serving real traffic; tests exercise the JSON API.
   if (env.APP_ENV === 'production' || env.APP_ENV === 'demo') await admin.initialize();
   else if (env.APP_ENV === 'development') admin.watch();
@@ -136,12 +148,26 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   app.get('/auth/csrf-client.js', (_req, res) => {
     res.type('application/javascript').sendFile(path.join(publicDir, 'csrf-client.js'));
   });
+  if (env.AI_ENABLED) {
+    app.get('/auth/assistant-widget.js', (_req, res) => {
+      res.type('application/javascript').sendFile(path.join(publicDir, 'assistant-widget.js'));
+    });
+  }
   app.use('/auth', authFormParser);
   app.use(csrfProtection(env.PUBLIC_URL));
-  app.use('/auth', createAuthRouter(prisma, env));
+  app.use('/auth', createAuthRouter(prisma, env, { fetch: oauthFetch }));
   // Mounted before AdminJS, whose body parser would otherwise see uploads. Session, CSRF and authentication
   // have already run; the upload route itself parses with bounded memory buffers.
-  app.use('/internal', requireUser(prisma, env), createAttachmentRouter(new AttachmentService(prisma, storage), env.MAX_CONCURRENT_UPLOADS));
+  // The optional AI help shares the mount, so it sits behind the same session, CSRF and authentication checks.
+  const assistantRouter = env.AI_ENABLED
+    ? createAssistantRouter(new AssistantService(assistant ?? createProviderFromEnv(env), new AssistantLimiter(env.AI_RATE_PER_MINUTE, env.AI_DAILY_REQUESTS)))
+    : null;
+  app.use(
+    '/internal',
+    requireUser(prisma, env),
+    createAttachmentRouter(new AttachmentService(prisma, storage), env.MAX_CONCURRENT_UPLOADS),
+    ...(assistantRouter ? [assistantRouter] : []),
+  );
 
   app.use(admin.options.rootPath, requireUser(prisma, env), limitBulkSelection, AdminJSExpress.buildRouter(admin));
 

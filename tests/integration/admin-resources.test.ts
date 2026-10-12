@@ -120,6 +120,34 @@ describe('ticket filters, sorting and paging', () => {
     expect((await list(s, 'Ticket', `filters.updatedAt~~from=${past}&filters.customer=${customer.id}`)).body.records).toHaveLength(3);
   });
 
+  it('lists "my open tickets": assigned to the agent and in any status but CLOSED', async () => {
+    const closed = await tickets.create(admin.actor, { description: 'Done', customerId: customer.id, subject: 'Already closed for agent A', groupId: groupA.id, assignedAgentId: agentA.agent.id });
+    const closedStatus = await prisma.ticketStatus.findUniqueOrThrow({ where: { code: 'CLOSED' } });
+    await prisma.ticket.update({ where: { id: closed.id }, data: { statusId: closedStatus.id } });
+    const coworker = await tickets.create(admin.actor, { description: 'Not mine', customerId: customer.id, subject: 'Assigned to a colleague', groupId: groupA.id, assignedAgentId: agentA2.agent.id });
+
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const mine = ids(await list(a, 'Ticket', `filters.assignedAgent=${agentA.agent.id}&filters.status=__open__`));
+    expect(mine).toContain(ticketA.id);
+    expect(mine).not.toContain(closed.id); // closed
+    expect(mine).not.toContain(coworker.id); // somebody else's
+    expect(mine).not.toContain(ticketA2.id); // unassigned
+
+    // The same filter without the status part still shows the closed one, so the filter is what hides it.
+    expect(ids(await list(a, 'Ticket', `filters.assignedAgent=${agentA.agent.id}`))).toContain(closed.id);
+    // And it never reaches beyond the agent's own groups.
+    const b = await signIn(app, agentB.user.normalizedEmail);
+    expect(ids(await list(b, 'Ticket', `filters.assignedAgent=${agentA.agent.id}&filters.status=__open__`))).toEqual([]);
+  });
+
+  it('puts "My open tickets" in the menu for everyone who works in the panel', async () => {
+    for (const email of [agentA.user.normalizedEmail, admin.user.normalizedEmail]) {
+      const html = (await (await signIn(app, email)).get('/admin')).text;
+      expect(html).toMatch(/"name":"MyOpenTickets"/);
+      expect(html).toContain('My open tickets');
+    }
+  });
+
   it('treats malformed filter values as "no match", not as a server error', async () => {
     const s = await signIn(app, admin.user.normalizedEmail);
     for (const q of ['filters.group=not-a-uuid', 'filters.number=abc', 'filters.priority=BOGUS', 'filters.customer=%27%3B--']) {
@@ -283,14 +311,45 @@ describe('customers', () => {
 });
 
 describe('reference data', () => {
-  it('limits group and agent lookups for an AGENT to their own groups', async () => {
+  /** Which resources the page puts in the side menu: id -> link, as embedded in the page state. */
+  const menu = (html: string) =>
+    Object.fromEntries([...html.matchAll(/"id":"(\w+)","name":"\w+","navigation":(?:\{[^}]*\}|null),"href":(false|null|"[^"]*")/g)].map((m) => [m[1]!, m[2]!]));
+  const administration = ['SupportGroup', 'Agent', 'TicketStatus', 'User'];
+
+  it('shows the Administration pages in the menu to ADMIN only', async () => {
+    const s = await signIn(app, admin.user.normalizedEmail);
+    const forAdmin = menu((await s.get('/admin')).text);
+    for (const id of administration) expect(forAdmin[id], id).toMatch(/^"\/admin\/resources\//);
+
     const a = await signIn(app, agentA.user.normalizedEmail);
-    const groups = ids(await a.get(`${API}/SupportGroup/actions/list`));
+    const forAgent = menu((await a.get('/admin')).text);
+    for (const id of administration) expect(forAgent[id] ?? 'none', id).not.toMatch(/^"\/admin\/resources\//);
+    // The support work itself stays in the menu.
+    expect(forAgent.Ticket).toMatch(/^"\/admin\/resources\//);
+    expect(forAgent.Customer).toMatch(/^"\/admin\/resources\//);
+  });
+
+  it('keeps the Administration lists and pages closed to an AGENT, while ADMIN opens them', async () => {
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    for (const resource of administration) {
+      expect(refusal(await a.get(`${API}/${resource}/actions/list`)), `${resource} list`).toBe('ForbiddenError');
+    }
+    expect(refusal(await a.get(`${API}/SupportGroup/records/${groupA.id}/show`))).toBe('ForbiddenError');
+    expect(refusal(await a.get(`${API}/Agent/records/${agentA.agent.id}/show`))).toBe('ForbiddenError');
+
+    const s = await signIn(app, admin.user.normalizedEmail);
+    for (const resource of administration) expect((await s.get(`${API}/${resource}/actions/list`)).status, resource).toBe(200);
+    expect(ids(await s.get(`${API}/SupportGroup/actions/list`))).toEqual(expect.arrayContaining([groupA.id, groupB.id]));
+  });
+
+  it('still offers an AGENT their own groups and colleagues in the ticket pickers (search), and nothing of other groups', async () => {
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const groups = ids(await a.get(`${API}/SupportGroup/actions/search/${encodeURIComponent(groupA.name)}`));
     expect(groups).toContain(groupA.id);
-    expect(groups).not.toContain(groupB.id);
-    const agentIds = ids(await a.get(`${API}/Agent/actions/list`));
-    expect(agentIds).toEqual(expect.arrayContaining([agentA.agent.id, agentA2.agent.id]));
-    expect(agentIds).not.toContain(agentB.agent.id);
+    expect(ids(await a.get(`${API}/SupportGroup/actions/search/${encodeURIComponent(groupB.name)}`))).not.toContain(groupB.id);
+    const agentIds = ids(await a.get(`${API}/Agent/actions/search/${encodeURIComponent(agentA2.agent.displayName)}`));
+    expect(agentIds).toContain(agentA2.agent.id);
+    expect(ids(await a.get(`${API}/Agent/actions/search/${encodeURIComponent(agentB.agent.displayName)}`))).not.toContain(agentB.agent.id);
   });
 
   it('never returns password hashes, and shows staff accounts to ADMIN only', async () => {

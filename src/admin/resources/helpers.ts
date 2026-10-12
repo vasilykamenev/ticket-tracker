@@ -41,6 +41,16 @@ export const ADMIN_WRITE = {
   edit: { isAccessible: adminOnly },
 };
 
+/**
+ * Pages of a resource that only an ADMIN may open. With no accessible list action AdminJS leaves the resource out
+ * of the side menu. `search` stays open to every staff member (and is scoped by the resource): the reference
+ * pickers of the ticket forms and filters use it to offer groups, agents and statuses.
+ */
+export const ADMIN_VIEW = {
+  list: { isAccessible: adminOnly },
+  show: { isAccessible: adminOnly },
+};
+
 /** ADMIN-only resource: invisible to everyone else, writable by ADMIN. */
 export const ADMIN_MANAGED = {
   ...ADMIN_ONLY_READ,

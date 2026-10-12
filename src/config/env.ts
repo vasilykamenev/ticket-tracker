@@ -12,6 +12,20 @@ const storageFields = {
   S3_SECRET_ACCESS_KEY: optional(z.string().min(1)),
   S3_BUCKET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).default('ticket-attachments')),
 };
+/** The optional AI support chat (requirements section 12). Off unless AI_ENABLED=true. */
+const flag = z.preprocess((v) => (v === '' || v === undefined ? 'false' : v), z.enum(['true', 'false']).transform((v) => v === 'true'));
+const assistantFields = {
+  AI_ENABLED: flag,
+  // 'fake' answers from the catalog without calling any provider: development and tests only.
+  AI_PROVIDER: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['anthropic', 'fake']).default('anthropic')),
+  ANTHROPIC_API_KEY: optional(z.string().min(1)),
+  AI_MODEL: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(1).default('claude-opus-5-5')),
+  AI_EFFORT: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['low', 'medium', 'high']).default('low')),
+  AI_RATE_PER_MINUTE: positiveInt(10),
+  AI_TIMEOUT_MS: positiveInt(10_000),
+  AI_MAX_OUTPUT_TOKENS: positiveInt(1024),
+  AI_DAILY_REQUESTS: positiveInt(200),
+};
 const appEnv = z.enum(['development', 'demo', 'production', 'test']).default('development');
 
 type StorageValues = { APP_ENV: z.infer<typeof appEnv>; S3_ENDPOINT?: string; S3_REGION?: string; S3_ACCESS_KEY_ID?: string; S3_SECRET_ACCESS_KEY?: string };
@@ -45,10 +59,31 @@ const base = z.object({
   LOGIN_MAX_FAILED_PER_ACCOUNT: positiveInt(5),
   ...storageFields,
   MAX_CONCURRENT_UPLOADS: positiveInt(4),
+  // Sign-in with Google and/or GitHub. Each provider is on when both of its values are set.
+  GOOGLE_CLIENT_ID: optional(z.string().min(1)),
+  GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
+  GITHUB_CLIENT_ID: optional(z.string().min(1)),
+  GITHUB_CLIENT_SECRET: optional(z.string().min(1)),
+  ...assistantFields,
 });
+
+/** A provider needs its id and its secret together; one without the other is a configuration mistake. */
+function checkOAuth(env: Partial<Record<'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'GITHUB_CLIENT_ID' | 'GITHUB_CLIENT_SECRET', string>>, ctx: z.RefinementCtx): void {
+  for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET']] as const) {
+    if (env[id] && !env[secret]) ctx.addIssue({ code: 'custom', path: [secret], message: `required when ${id} is set` });
+    if (env[secret] && !env[id]) ctx.addIssue({ code: 'custom', path: [id], message: `required when ${secret} is set` });
+  }
+}
 
 const schema = base.superRefine((env, ctx) => {
   checkStorage(env, ctx);
+  checkOAuth(env, ctx);
+  if (env.AI_ENABLED && env.AI_PROVIDER === 'anthropic' && !env.ANTHROPIC_API_KEY) {
+    ctx.addIssue({ code: 'custom', path: ['ANTHROPIC_API_KEY'], message: 'required when AI_ENABLED=true' });
+  }
+  if (env.AI_ENABLED && env.AI_PROVIDER === 'fake' && env.APP_ENV === 'production') {
+    ctx.addIssue({ code: 'custom', path: ['AI_PROVIDER'], message: 'the fake provider is not allowed in production' });
+  }
   if (env.APP_ENV !== 'production') return;
   if (new URL(env.PUBLIC_URL).protocol !== 'https:') {
     ctx.addIssue({ code: 'custom', path: ['PUBLIC_URL'], message: 'must be https in production' });
