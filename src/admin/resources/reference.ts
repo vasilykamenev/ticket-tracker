@@ -12,7 +12,7 @@ import { isAdmin } from '../../policies/ticket-policy.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { ADMIN_MANAGED, ADMIN_WRITE, NO_DELETE, adminOnly, onlyIn } from './helpers.js';
+import { ADMIN_MANAGED, ADMIN_WRITE, NO_DELETE, adminOnly, longText, onlyIn, toggle } from './helpers.js';
 import { dataAction, formAction, mutationAction, recordId } from './record-actions.js';
 
 /**
@@ -66,9 +66,9 @@ export function groupResource(prisma: PrismaClient, groups: GroupService, groupQ
         id: { isVisible: false },
         code: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The code is fixed once the group exists.') },
         name: { isTitle: true },
-        description: { type: 'textarea', isVisible: onlyIn('show', 'edit') },
+        description: { type: 'textarea', isVisible: onlyIn('show', 'edit'), ...longText() },
         // Activity is edited, not set at creation: new groups start active.
-        isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...editOnly() },
+        isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...toggle({ editOnly: true }) },
         members: { type: 'mixed', isVisible: onlyIn('show'), components: { show: Components.GroupMembers } },
       }),
       actions: {
@@ -110,7 +110,7 @@ export function agentResource(prisma: PrismaClient, agents: AgentService): Resou
         id: { isVisible: false },
         displayName: { isTitle: true },
         user: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The account cannot be changed.') },
-        isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...editOnly() },
+        isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...toggle({ editOnly: true }) },
       }),
       actions: ADMIN_WRITE,
     },
@@ -141,6 +141,7 @@ export function statusResource(prisma: PrismaClient, statuses: StatusService): R
         id: { isVisible: false },
         code: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The code is fixed by the workflow.') },
         name: { isTitle: true },
+        isActive: toggle(),
       }),
       actions: { ...NO_DELETE, new: { isAccessible: () => false }, edit: { isAccessible: adminOnly } },
     },
@@ -202,7 +203,7 @@ export function userResource(prisma: PrismaClient, users: UserService): Resource
         role: { position: 3, isVisible: onlyIn('list', 'filter', 'show', 'edit'), ...readonlyOnEdit('Use the Change role action.') },
         // Virtual: only for creating an account. Changing a password is its own action.
         password: { position: 4, type: 'password', isVisible: onlyIn('edit'), ...createOnly() },
-        isActive: { position: 5, isVisible: onlyIn('list', 'filter', 'show', 'edit'), ...editOnly() },
+        isActive: { position: 5, isVisible: onlyIn('list', 'filter', 'show', 'edit'), ...toggle({ editOnly: true }) },
         createdAt: { isVisible: onlyIn('show') },
         updatedAt: { isVisible: onlyIn('show') },
         passwordHash: { isVisible: false },
