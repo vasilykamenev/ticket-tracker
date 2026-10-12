@@ -6,7 +6,7 @@ import type { TicketQueries } from '../../domain/tickets/ticket-queries.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { NO_DELETE, adminOnly, onlyIn } from './helpers.js';
+import { NO_DELETE, adminOnly, onlyIn, toggle } from './helpers.js';
 
 const fromForm = (p: Record<string, unknown>) => ({
   name: p.name,
@@ -44,6 +44,7 @@ export function customerResource(prisma: PrismaClient, customers: CustomerServic
       properties: labelled('Customer', {
         id: { isVisible: false },
         name: { isTitle: true },
+        isActive: toggle(),
         createdAt: { isVisible: onlyIn('show') },
         updatedAt: { isVisible: onlyIn('show') },
         // Virtual: the customer's tickets, restricted on the server to the viewer's groups.

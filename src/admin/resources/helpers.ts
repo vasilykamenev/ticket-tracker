@@ -1,4 +1,5 @@
 import type { ActionContext } from 'adminjs';
+import { Components } from '../component-loader.js';
 
 type View = 'list' | 'filter' | 'show' | 'edit' | 'new';
 const VIEWS: View[] = ['list', 'filter', 'show', 'edit', 'new'];
@@ -48,3 +49,12 @@ export const ADMIN_MANAGED = {
 };
 
 export { adminOnly };
+
+/** A boolean shown as a switch in forms and a colored pill elsewhere. */
+export const toggle = (opts: { editOnly?: boolean } = {}) => ({
+  components: { edit: Components.ToggleField, list: Components.ToggleShow, show: Components.ToggleShow },
+  ...(opts.editOnly ? { custom: { mode: 'editOnly' } } : {}),
+});
+
+/** A long text edited in a tall, scrolling box. */
+export const longText = () => ({ components: { edit: Components.TextAreaField } });

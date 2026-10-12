@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Badge, Box, Button, Label, Loader, MessageBox, Text, TextArea } from '@adminjs/design-system';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Badge, Box, Button, Icon, Label, Loader, MessageBox, Text, TextArea } from '@adminjs/design-system';
 import type { BasePropertyProps } from 'adminjs';
 import type { CommentsPage } from '../../domain/comments/comment-queries.js';
 import { checkFile, deleteAttachment, downloadHref, formatBytes, postRecordAction, recordData, toServerError, uploadAttachment } from './api.js';
@@ -14,6 +14,7 @@ const MAX_LENGTH = 5000;
  */
 const CommentsInline = ({ record }: BasePropertyProps) => {
   const ticketId = record?.id ?? '';
+  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CommentsPage | null>(null);
   const [draft, setDraft] = useState('');
@@ -181,9 +182,13 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
                 </Box>
               ))}
               {c.canAttach && (
-                <Box>
+                <Box flex alignItems="center">
                   <input
+                    ref={(el: HTMLInputElement | null) => {
+                      fileInputs.current[c.id] = el;
+                    }}
                     type="file"
+                    hidden
                     accept={ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',')}
                     disabled={busy}
                     aria-label={`Attach a file to the comment by ${c.authorName}`}
@@ -192,6 +197,10 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
                       e.target.value = ''; // allows choosing the same file again
                     }}
                   />
+                  <Button type="button" size="sm" disabled={busy} onClick={() => fileInputs.current[c.id]?.click()}>
+                    <Icon icon="Paperclip" />
+                    Attach file
+                  </Button>
                   <Text as="span" variant="sm" ml="default">
                     {c.attachments.length} / {MAX_ATTACHMENTS_PER_COMMENT} files, up to {FILE_LIMIT_LABEL} each (PNG, JPEG, PDF, TXT)
                   </Text>

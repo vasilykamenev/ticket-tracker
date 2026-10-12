@@ -7,6 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const NAMES = [
   'ModeField', 'SetPasswordForm', 'ChangeRoleForm', 'GroupMembers',
   'ChangeStatusForm', 'BulkChangeStatusForm', 'AssignForm', 'TicketHistory', 'CustomerTickets', 'Dashboard', 'CommentsInline',
+  'ToggleField', 'ToggleShow', 'TextAreaField', 'StatusBadge', 'PriorityBadge', 'TicketHeader',
 ] as const;
 
 // Components import each other with ".js" specifiers (NodeNext). Only compiled JavaScript satisfies that, so
@@ -31,4 +32,10 @@ export const Components = {
   CustomerTickets: componentLoader.add('CustomerTickets', path.join(dir, 'components/CustomerTickets')),
   Dashboard: componentLoader.add('Dashboard', path.join(dir, 'components/Dashboard')),
   CommentsInline: componentLoader.add('CommentsInline', path.join(dir, 'components/CommentsInline')),
+  ToggleField: componentLoader.add('ToggleField', path.join(dir, 'components/ToggleField')),
+  ToggleShow: componentLoader.add('ToggleShow', path.join(dir, 'components/ToggleShow')),
+  TextAreaField: componentLoader.add('TextAreaField', path.join(dir, 'components/TextAreaField')),
+  StatusBadge: componentLoader.add('StatusBadge', path.join(dir, 'components/StatusBadge')),
+  PriorityBadge: componentLoader.add('PriorityBadge', path.join(dir, 'components/PriorityBadge')),
+  TicketHeader: componentLoader.add('TicketHeader', path.join(dir, 'components/TicketHeader')),
 };
