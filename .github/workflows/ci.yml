@@ -113,6 +113,8 @@ jobs:
           for _ in $(seq 1 60); do curl -fsS http://localhost:3000/health/ready >/dev/null && break; sleep 1; done
           curl -fsS http://localhost:3000/health/ready
 
+      # The smoke test is for test environments such as this throwaway one (it writes data); the production
+      # deployment does not run it.
       - name: Smoke test with both roles (ADMIN creates, AGENT works the ticket)
         run: |
           docker run --rm --network host \
