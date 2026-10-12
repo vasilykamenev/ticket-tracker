@@ -1,8 +1,11 @@
 name: ci
-# Runs on pull requests only: everything reaches main through one, so main is not tested a second time.
-# The deployment waits for the secret scan (deploy.yml), not for this workflow.
+# Tests everything that goes into `develop`: pull requests to it and the pushes to it. `main` takes only what
+# `develop` already passed, so it is not tested again; its deployment waits for the secret scan (deploy.yml).
 on:
+  push:
+    branches: [develop]
   pull_request:
+    branches: [develop]
 
 permissions:
   contents: read

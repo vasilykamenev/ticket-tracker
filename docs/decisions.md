@@ -201,5 +201,5 @@ All writes go through `UserService`, `AgentService`, `GroupService` and `StatusS
 
 ## D-024 Deployment waits for the secret scan, not for CI
 
-- **Decision.** On a push to `main`, `ci` (verify and docker) no longer runs; `deploy.yml` starts after `secrets-scan` succeeds (`workflow_run` of a `push`). `ci` still runs on every pull request, and everything reaches `main` through one (feature branch to `develop`, `develop` to `main`), so the tests and the image check have run on the same code before the merge.
-- **Consequence.** A direct push to `main`, or a merge whose result differs from what the pull request tested, is deployed without tests. Keep `main` protected so that it only takes pull requests (and require the `verify` and `docker` checks there), or run `deploy` by hand only after checking. The secret scan stays as the one gate on the push.
+- **Decision.** `ci` (verify and docker) runs on pull requests to `develop` and on pushes to `develop`; it does not run on `main`. `deploy.yml` starts after `secrets-scan` succeeds on a push to `main` (`workflow_run` of a `push`). Everything reaches `main` through a pull request from `develop`, so the code was tested on `develop` before it is merged.
+- **Consequence.** A direct push to `main`, or a merge that is not exactly what `develop` tested, is deployed without tests. Keep `main` protected so that it only takes pull requests from `develop`, or run `deploy` by hand only after checking. The secret scan stays as the one gate on the push.
