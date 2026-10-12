@@ -59,7 +59,14 @@ export function customerResource(prisma: PrismaClient, customers: CustomerServic
           component: false,
           handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
             const page = request.query?.page;
-            const result = await queries.customerTickets(actorFromContext(context), String(request.params.recordId), Number(typeof page === 'string' ? page : 1));
+            const { sortBy, direction } = request.query ?? {};
+            const result = await queries.customerTickets(
+              actorFromContext(context),
+              String(request.params.recordId),
+              Number(typeof page === 'string' ? page : 1),
+              typeof sortBy === 'string' ? sortBy : undefined,
+              typeof direction === 'string' ? direction : undefined,
+            );
             // AdminJS requires record actions to return the record; the page data rides along.
             return { record: context.record!.toJSON(context.currentAdmin), ...result };
           },

@@ -253,8 +253,12 @@ export class TicketQueries {
     return { items, total, page: pageNo, perPage: HISTORY_PAGE_SIZE };
   }
 
-  /** A customer's tickets, restricted to the actor's scope (the customer directory itself is shared). */
-  async customerTickets(actor: Actor, customerId: string, page = 1) {
+  /**
+   * A customer's tickets, restricted to the actor's scope (the customer directory itself is shared).
+   * Sorting is by a fixed set of columns (anything else falls back to the default); status sorts in workflow
+   * order and priority from LOW to URGENT.
+   */
+  async customerTickets(actor: Actor, customerId: string, page = 1, sortBy?: string, direction?: string) {
     const scope = await loadScope(this.prisma, actor);
     const pageNo = Math.max(1, Math.floor(page) || 1);
     if (!uuid.safeParse(customerId).success) return { items: [], total: 0, page: pageNo, perPage: CUSTOMER_TICKETS_PAGE_SIZE };
@@ -263,14 +267,14 @@ export class TicketQueries {
       this.prisma.ticket.count({ where }),
       this.prisma.ticket.findMany({
         where,
-        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        orderBy: [customerTicketsOrder(sortBy, direction === 'asc' ? 'asc' : 'desc'), { id: 'desc' }],
         skip: (pageNo - 1) * CUSTOMER_TICKETS_PAGE_SIZE,
         take: CUSTOMER_TICKETS_PAGE_SIZE,
-        select: { id: true, number: true, subject: true, priority: true, updatedAt: true, status: { select: { name: true } }, group: { select: { name: true } } },
+        select: { id: true, number: true, subject: true, priority: true, updatedAt: true, status: { select: { name: true, code: true } }, group: { select: { name: true } } },
       }),
     ]);
     return {
-      items: rows.map((t) => ({ id: t.id, number: t.number, subject: t.subject, priority: t.priority, status: t.status.name, group: t.group.name, updatedAt: t.updatedAt.toISOString() })),
+      items: rows.map((t) => ({ id: t.id, number: t.number, subject: t.subject, priority: t.priority, status: t.status.name, statusCode: t.status.code, group: t.group.name, updatedAt: t.updatedAt.toISOString() })),
       total,
       page: pageNo,
       perPage: CUSTOMER_TICKETS_PAGE_SIZE,
@@ -303,4 +307,18 @@ export class TicketQueries {
       unresolved: { count: unresolved, statusId: unresolvedId },
     };
   }
+}
+
+const CUSTOMER_TICKET_ORDER: Record<string, (dir: Prisma.SortOrder) => Prisma.TicketOrderByWithRelationInput> = {
+  number: (dir) => ({ number: dir }),
+  subject: (dir) => ({ subject: dir }),
+  group: (dir) => ({ group: { name: dir } }),
+  status: (dir) => ({ status: { sortOrder: dir } }),
+  priority: (dir) => ({ priority: dir }),
+  updatedAt: (dir) => ({ updatedAt: dir }),
+};
+
+function customerTicketsOrder(sortBy: string | undefined, dir: Prisma.SortOrder): Prisma.TicketOrderByWithRelationInput {
+  const make = sortBy && Object.hasOwn(CUSTOMER_TICKET_ORDER, sortBy) ? CUSTOMER_TICKET_ORDER[sortBy] : undefined;
+  return make ? make(dir) : { updatedAt: 'desc' };
 }
