@@ -104,7 +104,12 @@ jobs:
             echo "::notice::No DEPLOY_HOOK_URL secret: the image $IMAGE is published and migrated; start it on the Docker host."
             exit 0
           fi
-          curl -fsS --max-time 60 -X POST "$DEPLOY_HOOK_URL" >/dev/null
+          hook="$DEPLOY_HOOK_URL"
+          case "$hook" in
+            # Render: deploy exactly the image of the verified commit, not whatever :latest points to by then.
+            https://api.render.com/deploy/*) hook="${hook}&imgURL=$(printf '%s' "$IMAGE" | jq -sRr @uri)" ;;
+          esac
+          curl -fsS --max-time 60 -X POST "$hook" >/dev/null
           echo "Deployment requested."
 
   verify:
