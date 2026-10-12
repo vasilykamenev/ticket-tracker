@@ -1,0 +1,4 @@
+# Shell scripts run on Linux servers: always LF, whatever the checkout platform does.
+*.sh text eol=lf
+Caddyfile text eol=lf
+Dockerfile text eol=lf
