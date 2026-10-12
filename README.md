@@ -71,16 +71,20 @@ One-time setup (details and reasons: D-020). Passwords and keys live only in the
    ADMIN_DATABASE_URL=postgresql://postgres:...@HOST:5432/postgres MIGRATOR_PASSWORD=... RUNTIME_PASSWORD=... npm run db:provision
    ```
    It creates `migrator` (owns the schema, migrations only) and `app_runtime` (rows only, no DDL), verifies the result and prints no password.
-3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*` and `DEPLOY_HOOK_URL`; variable `PRODUCTION_URL`. On the Docker host: `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
-4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, hook, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
+3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*`, and the `VPS_*` secrets of the section below; variable `PRODUCTION_URL`. On the server (`/opt/ticket-tracker/.env`): `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
+4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, the server update over SSH, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
 
-## Render
+## VPS
 
-The production service is described in `render.yaml` (D-021). One-time setup:
+Delivery to a server of your own (D-022). Everything is in `deploy/vps/`. One-time setup:
 
-1. After the first run of `deploy` (a push to `main` that passes CI) the image `ghcr.io/vasilykamenev/ticket-tracker:latest` exists. It is private, so in Render add *Account Settings > Registry Credentials* named `ghcr` (GitHub Container Registry, your GitHub user, a token with the `read:packages` scope).
-2. *New > Blueprint*, pick this repository and branch `main`. Render asks for the secret values: paste the contents of `.env.render` (generated from the local production file) with *Environment > Add from .env*; set `PUBLIC_URL` to the service's `https://...onrender.com` address (or your domain) and redeploy.
-3. Copy the service's *Deploy Hook* URL into the GitHub environment `production` as the secret `DEPLOY_HOOK_URL`, and its address into the variable `PRODUCTION_URL`. From then on every push to `main` that passes CI is deployed, migrated, checked and smoke-tested automatically.
+1. **A server** with Ubuntu or Debian, a public IPv4 address and a DNS name that points at it (an `A` record; without a domain use `<ip with dashes>.sslip.io`). On your computer generate a key used only for deployments: `ssh-keygen -t ed25519 -f deploy_key -C deploy@github-actions`.
+2. **Prepare it** (as root, once, safe to repeat): copy `deploy/vps/bootstrap.sh` to the server and run `sudo ./bootstrap.sh --ssh-key "$(cat deploy_key.pub)"`. It installs Docker, creates the `deploy` user, opens only SSH, 80 and 443 and turns on security updates. Check that `ssh -i deploy_key deploy@<address>` works, then run it again with `--harden-ssh`.
+3. **The server's environment**: as the `deploy` user create `/opt/ticket-tracker/.env` from `deploy/vps/.env.example` (`chmod 600`): `DOMAIN`, `ACME_EMAIL`, `PUBLIC_URL`, a new `SESSION_SECRET`, `DATABASE_URL` (the runtime role through the session pooler), `DATABASE_CA_CERT`, `S3_*`. It stays on the server; the pipeline never touches it.
+4. **GitHub**, environment `production`: secrets `VPS_HOST`, `VPS_USER` (`deploy`), `VPS_SSH_KEY` (the content of `deploy_key`), `VPS_HOST_KEY` (the output of `ssh-keyscan -t ed25519 <address>`), and the variable `PRODUCTION_URL` (`https://<DOMAIN>`).
+5. **Deliver**: a push to `main` that passes CI runs `deploy`: image, migrations, copy of `deploy/vps`, `deploy.sh` over SSH (pull, start, wait for healthy, roll back if not), then the storage check and the smoke test.
+
+By hand on the server: `/opt/ticket-tracker/deploy.sh ghcr.io/<owner>/<repo>:<sha>` redeploys a version (add `--registry-login-stdin` and pipe the user and a token on two lines for a private image); `docker compose logs -f app` shows the application's log.
 
 ## Demo data
 
