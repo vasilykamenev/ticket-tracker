@@ -71,8 +71,8 @@ One-time setup (details and reasons: D-020). Passwords and keys live only in the
    ADMIN_DATABASE_URL=postgresql://postgres:...@HOST:5432/postgres MIGRATOR_PASSWORD=... RUNTIME_PASSWORD=... npm run db:provision
    ```
    It creates `migrator` (owns the schema, migrations only) and `app_runtime` (rows only, no DDL), verifies the result and prints no password.
-3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*`, and the `VPS_*` secrets of the section below; variable `PRODUCTION_URL`. On the server (`/opt/ticket-tracker/.env`): `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
-4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, the server update over SSH, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
+3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), and the `VPS_*` secrets of the section below; variable `PRODUCTION_URL`. On the server (`/opt/ticket-tracker/.env`): `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
+4. **Deliver.** A push to `main` that passes the secret scan runs `deploy`: image, migrations, the server update over SSH, storage check, wait for the address. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
 
 ## VPS
 
@@ -82,7 +82,18 @@ Delivery to a server of your own (D-022). Everything is in `deploy/vps/`. One-ti
 2. **Prepare it** (as root, once, safe to repeat): copy `deploy/vps/bootstrap.sh` to the server and run `sudo ./bootstrap.sh --ssh-key "$(cat deploy_key.pub)"`. It installs Docker, creates the `deploy` user, opens only SSH, 80 and 443 and turns on security updates. Check that `ssh -i deploy_key deploy@<address>` works, then run it again with `--harden-ssh`.
 3. **The server's environment**: as the `deploy` user create `/opt/ticket-tracker/.env` from `deploy/vps/.env.example` (`chmod 600`): `DOMAIN`, `ACME_EMAIL`, `PUBLIC_URL`, a new `SESSION_SECRET`, `DATABASE_URL` (the runtime role through the session pooler), `DATABASE_CA_CERT`, `S3_*`. It stays on the server; the pipeline never touches it.
 4. **GitHub**, environment `production`: secrets `VPS_HOST`, `VPS_USER` (`deploy`), `VPS_SSH_KEY` (the content of `deploy_key`), `VPS_HOST_KEY` (the output of `ssh-keyscan -t ed25519 <address>`), and the variable `PRODUCTION_URL` (`https://<DOMAIN>`).
-5. **Deliver**: a push to `main` that passes CI runs `deploy`: image, migrations, copy of `deploy/vps`, `deploy.sh` over SSH (pull, start, wait for healthy, roll back if not), then the storage check and the smoke test.
+5. **Deliver**: a push to `main` that passes the secret scan runs `deploy`: image, migrations, copy of `deploy/vps`, `deploy.sh` over SSH (pull, start, wait for healthy, roll back if not), then the storage check and the wait for the address.
+
+**Operator scripts** (copied to `/opt/ticket-tracker/tools/` by every deployment, run on the server as `deploy`; D-023):
+
+| Script | What it does |
+| --- | --- |
+| `./tools/admin-create.sh --email you@example.com [--name "..."]` | creates an administrator (the password is asked for, hidden) |
+| `./tools/seed.sh [--tickets 2000] [--seed 42]` | creates the demo dataset; `--tickets 20000` or `--tickets 200_000` for more (customers, comments and files grow with it) |
+| `./tools/verify.sh` | checks the dataset: counts, workflow, dates, every file in the bucket |
+| `./tools/remove.sh [--dry-run]` | removes the demo dataset (only its own rows and files) |
+
+Demo data in production needs a deliberate bypass: the scripts run each command once with `APP_ENV=demo`, only for that container, and ask you to type a phrase first. Plan for 1 GB of free memory per 50 000 tickets (the script checks). Details and limits: D-023.
 
 By hand on the server: `/opt/ticket-tracker/deploy.sh ghcr.io/<owner>/<repo>:<sha>` redeploys a version (add `--registry-login-stdin` and pipe the user and a token on two lines for a private image); `docker compose logs -f app` shows the application's log.
 
@@ -90,6 +101,7 @@ By hand on the server: `/opt/ticket-tracker/deploy.sh ghcr.io/<owner>/<repo>:<sh
 
 ```
 SEED_ADMIN_PASSWORD=... SEED_AGENT_PASSWORD=... npm run seed:demo -- --seed 42   # 17 accounts, 300 customers, 2000 tickets, 10000 comments, 200 files
+#   --tickets N (500 to 1000000) makes it bigger: customers, comments and files scale with it; give the same N to seed:verify and seed:reset
 npm run seed:verify                                                              # counts, workflow, dates, and every file present in Storage
 ALLOW_DEMO_RESET=true npm run seed:reset -- --dataset takehome-demo --confirm takehome-demo [--dry-run] [--delete-only]   # APP_ENV must be set (development or demo)
 ```

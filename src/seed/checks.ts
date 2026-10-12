@@ -1,5 +1,5 @@
 import { findTransition, isFrozen, isStatusCode } from '../domain/tickets/workflow.js';
-import { MAX_COMMENTS_PER_TICKET, SIZES, STATUS_COUNTS, TICKET_WINDOW_DAYS, type Snapshot } from './dataset.js';
+import { DEFAULT_TICKETS, MAX_COMMENTS_PER_TICKET, TICKET_WINDOW_DAYS, type Snapshot, sizesFor, statusCountsFor } from './dataset.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
@@ -87,7 +87,8 @@ function editDistance(a: string, b: string): number {
  * Checks the demo dataset against requirements section 13: volumes, memberships, assignees, that every ticket's
  * history is a chain of permitted transitions ending in its current state, and that dates and comments agree.
  */
-export function checkDataset(view: DatasetView, options: { referenceDate?: Date } = {}): CheckResult {
+export function checkDataset(view: DatasetView, options: { referenceDate?: Date; tickets?: number } = {}): CheckResult {
+  const SIZES = sizesFor(options.tickets ?? DEFAULT_TICKETS);
   const report = new Report();
   const stats: Record<string, number> = {};
   const expect = (what: string, actual: number, wanted: number) => {
@@ -112,7 +113,7 @@ export function checkDataset(view: DatasetView, options: { referenceDate?: Date 
     if (u.role === 'ADMIN' && agentUserIds.has(u.id)) report.add('accounts', `admin ${u.id} has an Agent profile`);
     if (u.role === 'AGENT' && !agentUserIds.has(u.id)) report.add('accounts', `agent account ${u.id} has no Agent profile`);
   }
-  for (const [status, wanted] of Object.entries(STATUS_COUNTS)) {
+  for (const [status, wanted] of Object.entries(statusCountsFor(SIZES.tickets))) {
     expect(`tickets ${status}`, view.tickets.filter((t) => t.status === status).length, wanted);
   }
   for (const a of view.attachments) if (a.state !== undefined && a.state !== 'READY') report.add('attachments', `state ${a.state}`);

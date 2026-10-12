@@ -8,9 +8,73 @@ import { Rng } from './rng.js';
 
 export const DATASET = 'takehome-demo';
 
-/** Requirements section 13: the exact volumes of the demo dataset. */
-export const SIZES = { admins: 2, agents: 15, groups: 5, memberships: 25, customers: 300, tickets: 2000, comments: 10000, attachments: 200 } as const;
-export const STATUS_COUNTS: Record<StatusCode, number> = { NEW: 500, IN_PROGRESS: 600, WAITING_CUSTOMER: 300, RESOLVED: 300, UNRESOLVED: 100, CLOSED: 200 };
+export interface Sizes {
+  admins: number;
+  agents: number;
+  groups: number;
+  memberships: number;
+  customers: number;
+  tickets: number;
+  comments: number;
+  attachments: number;
+}
+
+/** Requirements section 13: the volumes of the demo dataset are those of 2000 tickets. */
+export const DEFAULT_TICKETS = 2000;
+/** Below this the edge cases the checks demand (every priority, a long subject, 20 comments, ...) may not all occur. */
+export const MIN_TICKETS = 500;
+/** The dataset is built in memory, so the count is bounded; about 1 GB of memory per 50 000 tickets. */
+export const MAX_TICKETS = 1_000_000;
+/** Accounts, groups and memberships do not grow; customers, comments and files grow with the tickets. */
+const FILES_CAP = 500; // every file is a real object in the bucket: do not fill it with hundreds of thousands
+const MIN_CUSTOMERS = 170; // the similar names live at positions 150..170
+
+/** Splits `total` over the weights so that the parts are whole numbers that add up to `total` (largest remainder). */
+function apportion(weights: readonly number[], total: number): number[] {
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const exact = weights.map((w) => (w * total) / sum);
+  const parts = exact.map(Math.floor);
+  let rest = total - parts.reduce((a, b) => a + b, 0);
+  const byRemainder = exact.map((x, i) => [x - Math.floor(x), i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of byRemainder) {
+    if (rest-- <= 0) break;
+    parts[i]!++;
+  }
+  return parts;
+}
+
+export function assertTicketCount(tickets: number): void {
+  if (!Number.isInteger(tickets) || tickets < MIN_TICKETS || tickets > MAX_TICKETS) {
+    throw new RangeError(`The number of tickets must be a whole number from ${MIN_TICKETS} to ${MAX_TICKETS}.`);
+  }
+}
+
+/** The volumes of a dataset with `tickets` tickets; for 2000 they are exactly those of requirements section 13. */
+export function sizesFor(tickets: number): Sizes {
+  assertTicketCount(tickets);
+  return {
+    admins: 2,
+    agents: 15,
+    groups: 5,
+    memberships: 25,
+    customers: Math.max(MIN_CUSTOMERS, Math.round(tickets * 0.15)),
+    tickets,
+    comments: tickets * 5,
+    attachments: Math.min(FILES_CAP, Math.round(tickets / 10)),
+  };
+}
+
+const STATUS_SHARES: Record<StatusCode, number> = { NEW: 500, IN_PROGRESS: 600, WAITING_CUSTOMER: 300, RESOLVED: 300, UNRESOLVED: 100, CLOSED: 200 };
+
+/** How many tickets end in each status; for 2000 tickets: 500, 600, 300, 300, 100, 200. */
+export function statusCountsFor(tickets: number): Record<StatusCode, number> {
+  const codes = Object.keys(STATUS_SHARES) as StatusCode[];
+  const parts = apportion(codes.map((c) => STATUS_SHARES[c]), tickets);
+  return Object.fromEntries(codes.map((c, i) => [c, parts[i]!])) as Record<StatusCode, number>;
+}
+
+export const SIZES: Sizes = sizesFor(DEFAULT_TICKETS);
+export const STATUS_COUNTS: Record<StatusCode, number> = statusCountsFor(DEFAULT_TICKETS);
 export const MAX_COMMENTS_PER_TICKET = 20;
 export const TICKET_WINDOW_DAYS = 90;
 const ACCOUNT_AGE_DAYS = 500;
@@ -23,7 +87,14 @@ const SECOND_GROUP_AGENTS = SIZES.memberships - SIZES.agents;
 const SIMILAR_NAMES = { from: 150, to: 170 } as const;
 /** Every 70th ticket gets a subject of 150-200 characters. */
 const LONG_SUBJECT_EVERY = 70;
-const FILE_MIX: Record<FileKind, number> = { png: 80, jpeg: 40, pdf: 50, txt: 30 };
+const FILE_SHARES: Record<FileKind, number> = { png: 80, jpeg: 40, pdf: 50, txt: 30 };
+
+/** How many files of each kind; for 200 files: 80 PNG, 40 JPEG, 50 PDF, 30 TXT. */
+function fileMixFor(files: number): Record<FileKind, number> {
+  const kinds = Object.keys(FILE_SHARES) as FileKind[];
+  const parts = apportion(kinds.map((k) => FILE_SHARES[k]), files);
+  return Object.fromEntries(kinds.map((k, i) => [k, parts[i]!])) as Record<FileKind, number>;
+}
 const LONG_COMMENT = { minChars: 700, maxChars: 1800 } as const;
 /** The default dataset's tickets are numbered from this value + 1, so the numbers are the same after every reset. */
 export const TICKET_NUMBER_BASE = 1000;
@@ -99,6 +170,7 @@ export interface SeedDataset {
   dataset: string;
   seed: number;
   referenceDate: Date;
+  sizes: Sizes;
   users: SeedUser[];
   agents: SeedAgent[];
   groups: SeedGroup[];
@@ -115,6 +187,8 @@ export interface DatasetOptions {
   seed?: number;
   /** "Now" of the dataset: tickets are created within the 90 days before it. Defaults to the current time. */
   referenceDate?: Date;
+  /** How many tickets; customers, comments and files scale with it. Defaults to 2000, the volumes of the requirements. */
+  tickets?: number;
 }
 
 const SUBJECT_MAX = 200; // what the ticket form allows
@@ -129,6 +203,8 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   const dataset = options.dataset ?? DATASET;
   const seed = options.seed ?? 42;
   const ref = options.referenceDate ?? new Date();
+  const sizes = sizesFor(options.tickets ?? DEFAULT_TICKETS);
+  const statusCounts = statusCountsFor(sizes.tickets);
   const root = new Rng(seed);
   const id = (kind: string, ...parts: Array<string | number>) => seedId(dataset, kind, ...parts);
   // The default dataset has plain addresses and group codes; any other dataset (tests) gets its own, so two never collide.
@@ -143,7 +219,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     return user;
   });
   const agents: SeedAgent[] = [];
-  for (let i = 0; i < SIZES.agents; i++) {
+  for (let i = 0; i < sizes.agents; i++) {
     const displayName = agentName(i);
     const user: SeedUser = { id: id('user', 'agent', i + 1), email: `agent${pad(i + 1, 2)}${tag}@example.test`, displayName, role: 'AGENT', createdAt: longAgo };
     users.push(user);
@@ -170,7 +246,7 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
   // ---- customers
   const cRng = root.fork('customers');
   const customers: SeedCustomer[] = [];
-  for (let i = 0; i < SIZES.customers; i++) {
+  for (let i = 0; i < sizes.customers; i++) {
     const ru = cRng.chance(0.3);
     let name = ru ? `${cRng.pick(names.RU_FIRST)} ${cRng.pick(names.RU_LAST)}` : `${cRng.pick(names.EN_FIRST)} ${cRng.pick(names.EN_LAST)}`;
     if (i >= SIMILAR_NAMES.from && i < SIMILAR_NAMES.to && i % 2 === 1) {
@@ -190,15 +266,15 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
 
   // ---- tickets, their history and comments
   const tRng = root.fork('tickets');
-  const statusList = tRng.shuffle((Object.keys(STATUS_COUNTS) as StatusCode[]).flatMap((s) => Array<StatusCode>(STATUS_COUNTS[s]).fill(s)));
-  const counts = commentCounts(root.fork('comment-counts'), SIZES.tickets, SIZES.comments);
+  const statusList = tRng.shuffle((Object.keys(statusCounts) as StatusCode[]).flatMap((s) => Array<StatusCode>(statusCounts[s]).fill(s)));
+  const counts = commentCounts(root.fork('comment-counts'), sizes.tickets, sizes.comments);
 
   const tickets: SeedTicket[] = [];
   const history: SeedHistory[] = [];
   const comments: SeedComment[] = [];
   const cmRng = root.fork('comments');
 
-  for (let index = 0; index < SIZES.tickets; index++) {
+  for (let index = 0; index < sizes.tickets; index++) {
     const r = tRng.fork(`t${index}`);
     const finalStatus = statusList[index]!;
     const group = r.weighted(groups.map((g, i) => [g, GROUP_WEIGHTS[i]!] as const));
@@ -301,14 +377,14 @@ export function generateDataset(options: DatasetOptions = {}): SeedDataset {
     });
   }
 
-  const attachments = makeAttachments(root.fork('attachments'), id, comments, tickets);
+  const attachments = makeAttachments(root.fork('attachments'), id, comments, tickets, sizes.attachments);
   // A file is added a moment after its comment, so it can be the latest thing that happened to a ticket.
   const ticketById = new Map(tickets.map((t) => [t.id, t]));
   for (const a of attachments) {
     const ticket = ticketById.get(a.ticketId)!;
     if (a.createdAt.getTime() > ticket.updatedAt.getTime()) ticket.updatedAt = a.createdAt;
   }
-  return { dataset, seed, referenceDate: ref, users, agents, groups, memberships, customers, tickets, history, comments, attachments };
+  return { dataset, seed, referenceDate: ref, sizes, users, agents, groups, memberships, customers, tickets, history, comments, attachments };
 }
 
 // ---------------------------------------------------------------- helpers
@@ -478,15 +554,17 @@ function makeComments(
   });
 }
 
-/** 200 files spread over comments (at most five per comment): PNG, JPEG, PDF and TXT. */
+/** `count` files (200 for the default dataset) spread over comments (at most five per comment): PNG, JPEG, PDF and TXT. */
 function makeAttachments(
   r: Rng,
   id: (kind: string, ...parts: Array<string | number>) => string,
   comments: SeedComment[],
   tickets: SeedTicket[],
+  count: number,
 ): SeedAttachment[] {
-  const pool = (Object.keys(FILE_MIX) as FileKind[]).flatMap((kind) => Array<FileKind>(FILE_MIX[kind]).fill(kind));
-  const kinds = r.shuffle(pool).slice(0, SIZES.attachments);
+  const mix = fileMixFor(count);
+  const pool = (Object.keys(mix) as FileKind[]).flatMap((kind) => Array<FileKind>(mix[kind]).fill(kind));
+  const kinds = r.shuffle(pool);
   const ticketOf = new Map(tickets.map((t) => [t.id, t]));
   const attachments: SeedAttachment[] = [];
   let next = 0;
@@ -520,6 +598,6 @@ function makeAttachments(
       });
     }
   }
-  if (attachments.length !== SIZES.attachments) throw new Error(`generated ${attachments.length} attachments instead of ${SIZES.attachments}`);
+  if (attachments.length !== count) throw new Error(`generated ${attachments.length} attachments instead of ${count}`);
   return attachments;
 }

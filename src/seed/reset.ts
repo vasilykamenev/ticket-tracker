@@ -22,21 +22,33 @@ export interface ResetPlan {
 }
 
 /** What a reset would remove, without touching anything. */
-export async function planReset(prisma: PrismaClient, dataset: string = DATASET): Promise<ResetPlan & { keys: string[] }> {
-  const ids = ownedIds(dataset);
-  const ofTickets = { ticketId: { in: ids.ticketIds } };
+export async function planReset(prisma: PrismaClient, dataset: string = DATASET, tickets?: number): Promise<ResetPlan & { keys: string[] }> {
+  const ids = ownedIds(dataset, tickets);
   // Rows in any state count (READY, PENDING, FAILED, DELETING): their objects have to go as well.
-  const attachmentRows = await prisma.attachment.findMany({ where: { comment: ofTickets }, select: { objectKey: true } });
-  const keys = new Set([...ids.seedObjectKeys, ...attachmentRows.map((r) => r.objectKey)]);
+  // A big dataset has far more ids than one statement can carry, so everything is asked for in chunks.
+  const attachmentKeys: string[] = [];
+  let comments = 0;
+  let history = 0;
+  let ticketRows = 0;
+  for (const part of chunks(ids.ticketIds)) {
+    const ofTickets = { ticketId: { in: part } };
+    attachmentKeys.push(...(await prisma.attachment.findMany({ where: { comment: ofTickets }, select: { objectKey: true } })).map((r) => r.objectKey));
+    comments += await prisma.comment.count({ where: ofTickets });
+    history += await prisma.ticketHistory.count({ where: ofTickets });
+    ticketRows += await prisma.ticket.count({ where: { id: { in: part } } });
+  }
+  let customers = 0;
+  for (const part of chunks(ids.customerIds)) customers += await prisma.customer.count({ where: { id: { in: part } } });
+  const keys = new Set([...ids.seedObjectKeys, ...attachmentKeys]);
   return {
     rows: {
       users: await prisma.user.count({ where: { id: { in: ids.userIds } } }),
       groups: await prisma.supportGroup.count({ where: { id: { in: ids.groupIds } } }),
-      customers: await prisma.customer.count({ where: { id: { in: ids.customerIds } } }),
-      tickets: await prisma.ticket.count({ where: { id: { in: ids.ticketIds } } }),
-      comments: await prisma.comment.count({ where: ofTickets }),
-      history: await prisma.ticketHistory.count({ where: ofTickets }),
-      attachments: attachmentRows.length,
+      customers,
+      tickets: ticketRows,
+      comments,
+      history,
+      attachments: attachmentKeys.length,
     },
     objects: keys.size,
     keys: [...keys],
@@ -71,11 +83,11 @@ export async function resetDemo(
     if (!passwords.admin || !passwords.agent) throw new SeedGuardError('Set SEED_ADMIN_PASSWORD and SEED_AGENT_PASSWORD to recreate the dataset, or pass --delete-only.');
   }
 
-  const plan = await planReset(prisma, dataset);
+  const plan = await planReset(prisma, dataset, options.tickets);
   await options.onPlan?.(plan);
   if (options.dryRun) return { plan, deleted: false, leftoverObjects: 0 };
 
-  await deleteRows(prisma, ownedIds(dataset));
+  await deleteRows(prisma, ownedIds(dataset, options.tickets));
   if (options.deleteOnly && dataset === DATASET && (await prisma.ticket.count()) === 0) {
     // The demo took the numbers 1001..3000; with no ticket left, numbering starts from 1 again.
     await prisma.$queryRaw`SELECT setval(pg_get_serial_sequence('support."Ticket"', 'number'), 1, false)`;
@@ -112,7 +124,8 @@ async function deleteRows(prisma: PrismaClient, ids: ReturnType<typeof ownedIds>
         await tx.supportGroup.deleteMany({ where: { id: { in: ids.groupIds } } });
         for (const part of chunks(ids.customerIds)) await tx.customer.deleteMany({ where: { id: { in: part } } });
       },
-      { timeout: 120_000, maxWait: 10_000 },
+      // About 20 ms per ticket with its comments and history; never less than the 2 minutes of the default dataset.
+      { timeout: Math.max(120_000, ids.ticketIds.length * 20), maxWait: 10_000 },
     );
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {

@@ -3,6 +3,7 @@ import { createStorage } from '../storage/index.js';
 import { MemoryStorage } from '../storage/memory-storage.js';
 import type { ObjectStorage } from '../storage/storage.js';
 import { SeedGuardError } from './config.js';
+import { DEFAULT_TICKETS, MAX_TICKETS, MIN_TICKETS } from './dataset.js';
 
 /**
  * The real object storage. Demo attachments in memory would vanish with the process and leave database rows that
@@ -38,5 +39,15 @@ export function parseSeedNumber(value: string | undefined, fallback: number): nu
   if (value === undefined) return fallback;
   const n = Number(value);
   if (!Number.isInteger(n) || n < 0) throw new SeedGuardError(`Not a valid non-negative integer: ${value}`);
+  return n;
+}
+
+/** `--tickets N`: how many tickets the dataset has (the other volumes scale with it); the same N is needed to verify or reset it. */
+export function parseTicketCount(value: string | undefined): number {
+  if (value === undefined) return DEFAULT_TICKETS;
+  const n = Number(value.replace(/[_ ,]/g, ''));
+  if (!Number.isInteger(n) || n < MIN_TICKETS || n > MAX_TICKETS) {
+    throw new SeedGuardError(`--tickets must be a whole number from ${MIN_TICKETS} to ${MAX_TICKETS}, got "${value}".`);
+  }
   return n;
 }

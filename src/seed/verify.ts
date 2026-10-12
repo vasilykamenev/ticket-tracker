@@ -69,9 +69,9 @@ export interface VerifyResult extends CheckResult {
 }
 
 /** Counts, references, workflow and dates from the database, plus the presence of every seeded file in Storage. */
-export async function verifyDemo(prisma: PrismaClient, storage: ObjectStorage, options: { dataset?: string; concurrency?: number } = {}): Promise<VerifyResult> {
-  const { view, attachments } = await loadView(prisma, ownedIds(options.dataset ?? DATASET));
-  const result = checkDataset(view);
+export async function verifyDemo(prisma: PrismaClient, storage: ObjectStorage, options: { dataset?: string; tickets?: number; concurrency?: number } = {}): Promise<VerifyResult> {
+  const { view, attachments } = await loadView(prisma, ownedIds(options.dataset ?? DATASET, options.tickets));
+  const result = checkDataset(view, { tickets: options.tickets });
 
   const storageProblems: string[] = [];
   await mapLimit(attachments, options.concurrency ?? 8, async (a) => {
