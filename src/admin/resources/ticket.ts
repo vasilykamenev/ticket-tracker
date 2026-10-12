@@ -73,21 +73,26 @@ export function ticketResource(
       sort: { sortBy: 'updatedAt', direction: 'desc' },
       listProperties: ['number', 'subject', 'customer', 'group', 'assignedAgent', 'status', 'priority', 'updatedAt'],
       filterProperties: ['number', 'subject', 'status', 'group', 'assignedAgent', 'priority', 'customer', 'createdAt', 'updatedAt'],
+      // The edit form's order (subject, customer, group, assignee, description) under the header line, where the number
+      // carries the status and the priority (TicketHeader). What the form does not have follows, and the comments
+      // (their list and the box for a new one) come last, as they do in the form before Save.
       showProperties: [
-        'number', 'subject', 'description', 'customer', 'group', 'assignedAgent', 'age',
-        'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'comments', 'history',
+        'number', 'subject', 'customer', 'group', 'assignedAgent', 'description',
+        'age', 'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'history', 'comments',
       ],
       properties: labelled('Ticket', {
         id: { isVisible: false },
         // On the page the number also draws the status and the priority at the right of its line (TicketHeader).
         number: { isVisible: onlyIn('list', 'filter', 'show'), components: { show: Components.TicketHeader } },
-        subject: { isTitle: true, isVisible: onlyIn('list', 'filter', 'show', 'edit') },
-        description: { type: 'textarea', isVisible: onlyIn('show', 'edit'), ...longText() },
-        priority: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { list: Components.PriorityBadge, show: Components.PriorityBadge } },
+        // `position` fixes the order of the edit form: subject, priority, customer, group, assignee, description,
+        // then the comments (their list and the box for a new one), and the Save button after them.
+        subject: { isTitle: true, position: 1, isVisible: onlyIn('list', 'filter', 'show', 'edit') },
+        description: { type: 'textarea', position: 6, isVisible: onlyIn('show', 'edit'), ...longText() },
+        priority: { position: 2, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { list: Components.PriorityBadge, show: Components.PriorityBadge } },
         // "edit" covers both the new and the edit form; on an existing ticket these render read-only.
-        customer: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'The customer cannot be changed after creation.' } },
-        group: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
-        assignedAgent: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
+        customer: { position: 3, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'The customer cannot be changed after creation.' } },
+        group: { position: 4, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
+        assignedAgent: { position: 5, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
         status: { isVisible: onlyIn('list', 'filter', 'show'), components: { list: Components.StatusBadge, show: Components.StatusBadge } },
         resolution: { type: 'textarea', isVisible: onlyIn('show') },
         unresolvedReason: { type: 'textarea', isVisible: onlyIn('show') },
