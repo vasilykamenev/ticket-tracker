@@ -158,6 +158,18 @@ describe('customerTickets', () => {
     expect((await queries.customerTickets(s.agentA.actor, s.customer.id, 2)).items).toHaveLength(2);
   });
 
+  it('sorts by a whitelisted column in both directions and ignores unknown columns', async () => {
+    const s = await scenario();
+    await tickets.create(s.admin.actor, { ...s.base, subject: 'Aaa first subject', groupId: s.groupA.id });
+    const asc = (await queries.customerTickets(s.admin.actor, s.customer.id, 1, 'subject', 'asc')).items.map((t) => t.subject);
+    expect(asc).toEqual([...asc].sort((x, y) => x.localeCompare(y, 'en')));
+    expect(asc[0]).toBe('Aaa first subject');
+    const desc = (await queries.customerTickets(s.admin.actor, s.customer.id, 1, 'number', 'desc')).items.map((t) => t.number);
+    expect(desc).toEqual([...desc].sort((x, y) => y - x));
+    const fallback = await queries.customerTickets(s.admin.actor, s.customer.id, 1, 'passwordHash', 'asc');
+    expect(fallback.items).toHaveLength(fallback.total);
+  });
+
   it('returns an empty page for an unknown customer id', async () => {
     const s = await scenario();
     expect((await queries.customerTickets(s.admin.actor, 'not-a-uuid')).total).toBe(0);

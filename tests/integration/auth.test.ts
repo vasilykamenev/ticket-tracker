@@ -123,6 +123,17 @@ describe('root address', () => {
   });
 });
 
+describe('admin theme', () => {
+  it('serves the light theme as the default look', async () => {
+    const { agent } = await login(app, 'admin');
+    const html = (await agent.get('/admin').expect(200)).text;
+    expect(html).toMatch(/themes\/light\/theme\.bundle\.js/);
+    const asset = /(?:src|href)="([^"]*themes\/light\/[^"?]+)/.exec(html)?.[1];
+    expect(asset).toBeTruthy();
+    await agent.get(asset!).expect(200);
+  });
+});
+
 describe('login', () => {
   it('serves a form with a CSRF token and a hardened session cookie', async () => {
     const res = await request(app).get('/auth/login').expect(200);

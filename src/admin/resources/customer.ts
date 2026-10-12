@@ -6,7 +6,7 @@ import type { TicketQueries } from '../../domain/tickets/ticket-queries.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { NO_DELETE, adminOnly, onlyIn } from './helpers.js';
+import { NO_DELETE, adminOnly, onlyIn, toggle } from './helpers.js';
 
 const fromForm = (p: Record<string, unknown>) => ({
   name: p.name,
@@ -44,6 +44,7 @@ export function customerResource(prisma: PrismaClient, customers: CustomerServic
       properties: labelled('Customer', {
         id: { isVisible: false },
         name: { isTitle: true },
+        isActive: toggle(),
         createdAt: { isVisible: onlyIn('show') },
         updatedAt: { isVisible: onlyIn('show') },
         // Virtual: the customer's tickets, restricted on the server to the viewer's groups.
@@ -58,7 +59,14 @@ export function customerResource(prisma: PrismaClient, customers: CustomerServic
           component: false,
           handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
             const page = request.query?.page;
-            const result = await queries.customerTickets(actorFromContext(context), String(request.params.recordId), Number(typeof page === 'string' ? page : 1));
+            const { sortBy, direction } = request.query ?? {};
+            const result = await queries.customerTickets(
+              actorFromContext(context),
+              String(request.params.recordId),
+              Number(typeof page === 'string' ? page : 1),
+              typeof sortBy === 'string' ? sortBy : undefined,
+              typeof direction === 'string' ? direction : undefined,
+            );
             // AdminJS requires record actions to return the record; the page data rides along.
             return { record: context.record!.toJSON(context.currentAdmin), ...result };
           },

@@ -6,6 +6,7 @@ import express from 'express';
 import type { ErrorRequestHandler } from 'express';
 import AdminJS from 'adminjs';
 import AdminJSExpress from '@adminjs/express';
+import { dark, light, noSidebar } from '@adminjs/themes';
 import { Database, Resource } from '@adminjs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import type pg from 'pg';
@@ -67,6 +68,9 @@ export function buildAdmin(prisma: PrismaClient): AdminJS {
     branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
     assets: { scripts: ['/auth/csrf-client.js'] },
+    // The light theme is the default look (as on the AdminJS demo); viewers can switch with the moon icon.
+    defaultTheme: light.id,
+    availableThemes: [light, dark, noSidebar],
     settings: { defaultPerPage: 25 },
     // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
     dashboard: {
@@ -122,6 +126,10 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   // Public on purpose (the login page may show it) and before the session so it never creates one.
   app.get('/auth/logo.png', (_req, res) => {
     res.sendFile(path.join(publicDir, 'logo.png'), { maxAge: '1d' });
+  });
+  // The outline picture on the welcome panel of the sign-in page (440 px wide, shown at 220 px).
+  app.get('/auth/login-art.png', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'login-art.png'), { maxAge: '1d' });
   });
 
   app.use(createSessionMiddleware(env, sessionPool));

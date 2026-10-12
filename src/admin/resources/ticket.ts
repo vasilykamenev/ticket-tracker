@@ -12,7 +12,7 @@ import { ticketScopeWhere } from '../../policies/ticket-policy.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { NO_ACTIONS, onlyIn } from './helpers.js';
+import { NO_ACTIONS, longText, onlyIn } from './helpers.js';
 import { dataAction, formAction, mutationAction, pick, query, recordId } from './record-actions.js';
 
 /** Form fields that the ordinary edit form must never change; changing them is rejected, not ignored. */
@@ -74,20 +74,21 @@ export function ticketResource(
       listProperties: ['number', 'subject', 'customer', 'group', 'assignedAgent', 'status', 'priority', 'updatedAt'],
       filterProperties: ['number', 'subject', 'status', 'group', 'assignedAgent', 'priority', 'customer', 'createdAt', 'updatedAt'],
       showProperties: [
-        'number', 'subject', 'description', 'priority', 'status', 'customer', 'group', 'assignedAgent', 'age',
+        'number', 'subject', 'description', 'customer', 'group', 'assignedAgent', 'age',
         'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'comments', 'history',
       ],
       properties: labelled('Ticket', {
         id: { isVisible: false },
-        number: { isVisible: onlyIn('list', 'filter', 'show') },
+        // On the page the number also draws the status and the priority at the right of its line (TicketHeader).
+        number: { isVisible: onlyIn('list', 'filter', 'show'), components: { show: Components.TicketHeader } },
         subject: { isTitle: true, isVisible: onlyIn('list', 'filter', 'show', 'edit') },
-        description: { type: 'textarea', isVisible: onlyIn('show', 'edit') },
-        priority: { isVisible: onlyIn('list', 'filter', 'show', 'edit') },
+        description: { type: 'textarea', isVisible: onlyIn('show', 'edit'), ...longText() },
+        priority: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { list: Components.PriorityBadge, show: Components.PriorityBadge } },
         // "edit" covers both the new and the edit form; on an existing ticket these render read-only.
         customer: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'The customer cannot be changed after creation.' } },
         group: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
         assignedAgent: { isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
-        status: { isVisible: onlyIn('list', 'filter', 'show') },
+        status: { isVisible: onlyIn('list', 'filter', 'show'), components: { list: Components.StatusBadge, show: Components.StatusBadge } },
         resolution: { type: 'textarea', isVisible: onlyIn('show') },
         unresolvedReason: { type: 'textarea', isVisible: onlyIn('show') },
         resolvedAt: { isVisible: onlyIn('show') },
