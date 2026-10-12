@@ -179,6 +179,73 @@ describe('update and optimistic locking', () => {
   });
 });
 
+describe('update together with a status change (the edit form)', () => {
+  it('makes the edits and the status change in one transaction, one history entry each', async () => {
+    const s = await inProgress();
+    const done = await tickets.updateWithStatus(s.admin.actor, s.ticket.id, s.ticket.version, { priority: 'URGENT' }, { targetStatus: 'RESOLVED', resolution: RESOLUTION });
+    expect(done.status.code).toBe('RESOLVED');
+    expect(done.priority).toBe('URGENT');
+    expect(done.version).toBe(s.ticket.version + 2);
+    expect((await historyKinds(s.ticket.id)).slice(-2)).toEqual(['STATUS_CHANGED', 'UPDATED']);
+  });
+
+  it('takes a status change alone when the sent fields are unchanged', async () => {
+    const s = await inProgress();
+    const done = await tickets.updateWithStatus(
+      s.admin.actor,
+      s.ticket.id,
+      s.ticket.version,
+      { subject: s.ticket.subject, priority: s.ticket.priority },
+      { targetStatus: 'WAITING_CUSTOMER', reason: REASON },
+    );
+    expect(done.status.code).toBe('WAITING_CUSTOMER');
+    expect(done.version).toBe(s.ticket.version + 1);
+  });
+
+  it('leaves nothing behind when the status change is refused', async () => {
+    const s = await inProgress();
+    const err = await failure(tickets.updateWithStatus(s.admin.actor, s.ticket.id, s.ticket.version, { priority: 'URGENT' }, { targetStatus: 'RESOLVED' }));
+    expect(err.code).toBe('validation');
+    const now = await tickets.get(s.admin.actor, s.ticket.id);
+    expect(now.priority).toBe(s.ticket.priority);
+    expect(now.status.code).toBe('IN_PROGRESS');
+    expect(now.version).toBe(s.ticket.version);
+  });
+
+  it('leaves nothing behind when the edits are refused after the status change', async () => {
+    const s = await inProgress();
+    const err = await failure(tickets.updateWithStatus(s.admin.actor, s.ticket.id, s.ticket.version, { subject: 'abc' }, { targetStatus: 'WAITING_CUSTOMER', reason: REASON }));
+    expect(err.status).toBe(422);
+    const now = await tickets.get(s.admin.actor, s.ticket.id);
+    expect(now.status.code).toBe('IN_PROGRESS');
+    expect(now.version).toBe(s.ticket.version);
+  });
+
+  it('reopens a CLOSED ticket and edits it in the same save', async () => {
+    const s = await inProgress();
+    const resolved = await tickets.changeStatus(s.admin.actor, s.ticket.id, s.ticket.version, { targetStatus: 'RESOLVED', resolution: RESOLUTION });
+    const closed = await tickets.changeStatus(s.admin.actor, resolved.id, resolved.version, { targetStatus: 'CLOSED' });
+    const reopened = await tickets.updateWithStatus(
+      s.admin.actor,
+      closed.id,
+      closed.version,
+      { priority: 'HIGH' },
+      { targetStatus: 'IN_PROGRESS', reason: REASON, assignedAgentId: s.agent.agent.id },
+    );
+    expect(reopened.status.code).toBe('IN_PROGRESS');
+    expect(reopened.priority).toBe('HIGH');
+  });
+
+  it('keeps the rules of both halves: a stale version is a 409, edits alone on a frozen ticket are refused', async () => {
+    const s = await inProgress();
+    const stale = await failure(tickets.updateWithStatus(s.admin.actor, s.ticket.id, s.ticket.version - 1, { priority: 'LOW' }, { targetStatus: 'WAITING_CUSTOMER', reason: REASON }));
+    expect(stale.code).toBe('version_conflict');
+    const frozen = await tickets.changeStatus(s.admin.actor, s.ticket.id, s.ticket.version, { targetStatus: 'UNRESOLVED', unresolvedReason: 'Blocked by a vendor limitation' });
+    const err = await failure(tickets.updateWithStatus(s.admin.actor, frozen.id, frozen.version, { priority: 'LOW' }, undefined));
+    expect(err.code).toBe('ticket_frozen');
+  });
+});
+
 describe('assignment', () => {
   it('assigns an active member and records ASSIGNED', async () => {
     const { ticket, admin, agent } = await scenario();

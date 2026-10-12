@@ -232,6 +232,27 @@ describe('ticket writes go through the service', () => {
     ticketA.version = after.version;
   });
 
+  it('changes the status from the edit form, with the edits, and reports what the change lacks on the status field', async () => {
+    const a = await signIn(app, agentA.user.normalizedEmail);
+    const params = (await a.get(`${API}/Ticket/records/${ticketA.id}/show`)).body.record.params as Record<string, unknown>;
+    const before = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketA.id }, include: { status: true } });
+    expect(before.status.code).toBe('NEW'); // the fixture ticket has an assignee, so it can start work
+
+    const ok = await a.post(`${API}/Ticket/records/${ticketA.id}/edit`, { ...params, priority: 'HIGH', statusTarget: 'IN_PROGRESS' });
+    expect(ok.body.record.errors).toEqual({});
+    const after = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketA.id }, include: { status: true } });
+    expect(after.status.code).toBe('IN_PROGRESS');
+    expect(after.priority).toBe('HIGH');
+
+    const next = (await a.get(`${API}/Ticket/records/${ticketA.id}/show`)).body.record.params as Record<string, unknown>;
+    const lacking = await a.post(`${API}/Ticket/records/${ticketA.id}/edit`, { ...next, priority: 'LOW', statusTarget: 'RESOLVED' });
+    expect(lacking.body.record.errors.status.message).toContain('Resolution');
+    const same = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketA.id } });
+    expect(same.version).toBe(after.version); // the refused change took the edits with it
+    expect(same.priority).toBe('HIGH');
+    ticketA.version = after.version;
+  });
+
   it('rejects an edit that tries to change group, assignee, status or customer', async () => {
     const a = await signIn(app, agentA.user.normalizedEmail);
     const params = (await a.get(`${API}/Ticket/records/${ticketA.id}/show`)).body.record.params as Record<string, unknown>;

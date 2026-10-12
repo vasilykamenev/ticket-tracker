@@ -28,6 +28,16 @@ const PROTECTED_FIELDS: Record<string, string> = {
 };
 
 const blank = (v: unknown): string | null => (v === undefined || v === null || v === '' ? null : String(v));
+const optional = (key: string, v: unknown): Record<string, string> => (blank(v) === null ? {} : { [key]: String(v) });
+
+/** Problems of a status change, as the workflow names them, and how the edit form's status field calls them. */
+const STATUS_PROBLEMS: Record<string, string> = {
+  targetStatus: 'Status',
+  reason: 'Reason',
+  resolution: 'Resolution',
+  unresolvedReason: 'Why it is unresolved',
+  assignedAgentId: 'Assignee',
+};
 
 export function ticketResource(
   prisma: PrismaClient,
@@ -61,7 +71,30 @@ export function ticketResource(
           }
         }
         if (Object.keys(details).length > 0) throw new ValidationError('validation', 'Invalid input', details);
-        return tickets.update(actor, id, Number(p.version), pick(p, ['subject', 'description', 'priority']));
+        const target = blank(p.statusTarget);
+        const fields = pick(p, ['subject', 'description', 'priority']);
+        if (target === null || target === current.status.code) return tickets.update(actor, id, Number(p.version), fields);
+        const change = {
+          targetStatus: target,
+          ...optional('reason', p.statusReason),
+          ...optional('resolution', p.statusResolution),
+          ...optional('unresolvedReason', p.statusUnresolvedReason),
+          ...optional('assignedAgentId', p.statusAssignee),
+        };
+        try {
+          return await tickets.updateWithStatus(actor, id, Number(p.version), fields, change);
+        } catch (err) {
+          // The status field of the form shows every problem of the change in one place.
+          if (err instanceof ValidationError && err.details && Object.keys(err.details).some((k) => k in STATUS_PROBLEMS)) {
+            const rest = Object.entries(err.details).filter(([k]) => !(k in STATUS_PROBLEMS));
+            const text = Object.entries(err.details)
+              .filter(([k]) => k in STATUS_PROBLEMS)
+              .map(([k, v]) => `${STATUS_PROBLEMS[k]}: ${v}`)
+              .join('; ');
+            throw new ValidationError(err.code, err.message, { ...Object.fromEntries(rest), status: text });
+          }
+          throw err;
+        }
       },
     },
   );
@@ -93,7 +126,8 @@ export function ticketResource(
         customer: { position: 3, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'The customer cannot be changed after creation.' } },
         group: { position: 4, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
         assignedAgent: { position: 5, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { edit: Components.ModeField }, custom: { hint: 'Change this with the Assign action.' } },
-        status: { isVisible: onlyIn('list', 'filter', 'show'), components: { list: Components.StatusBadge, show: Components.StatusBadge } },
+        // In the edit form the status is changeable: StatusEditField offers the allowed changes and what each needs.
+        status: { position: 2.5, isVisible: onlyIn('list', 'filter', 'show', 'edit'), components: { list: Components.StatusBadge, show: Components.StatusBadge, edit: Components.StatusEditField } },
         resolution: { type: 'textarea', isVisible: onlyIn('show') },
         unresolvedReason: { type: 'textarea', isVisible: onlyIn('show') },
         resolvedAt: { isVisible: onlyIn('show') },

@@ -67,7 +67,7 @@ The `ci` workflow (pull requests to `develop` and pushes to `develop`) type-chec
 
 ## Out of scope and known limits
 - **Not built:** Self-registration through OAuth (sign-in with Google or GitHub exists, but only for accounts an administrator already created, D-026); a customer portal or customer login; inbound e-mail; antivirus scanning of uploads; comment deletion (disabled by design); a background job for bulk changes of more than 100 tickets (use batches); monitoring and alerting; high availability (one server, a few seconds of unavailability while the container is replaced); a shared store for the login limits (needed once there is more than one replica).
-- **AI field help (optional bonus, requirements section 12):** built, off by default, and not yet tried against the real Claude API (no key was available); see "AI field help" below.
+- **AI field help (optional bonus, requirements section 12):** built, off by default, and tried against the real Claude API (`claude-haiku-5-5`, about 1.2 seconds for a short question); see "AI field help" below.
 - **Customers are a shared directory** among staff, not a multi-tenant model: an agent can see the names and e-mail addresses of known customers but cannot reach out-of-scope tickets through them.
 - **A direct push to `main` is deployed after the secret scan only**, without the tests (they ran on `develop`). Branch protection is planned for when the repository becomes public (`docs/acceptance.md`).
 
@@ -80,7 +80,7 @@ Off by default (`AI_ENABLED=false`): then there is no endpoint, no script and no
 - **Limits:** 10 questions a minute per person (HTTP 429), a daily budget of 200 requests for everyone, a 10 second wait without retries, answers of about 120 words (hard-cut at 1200 characters). When the AI cannot answer (timeout, 429, 5xx, a refusal, the budget spent) the panel shows the field's static help and a note; the rest of the admin is unaffected.
 - **Provider and model:** Claude through the official `@anthropic-ai/sdk`, `claude-opus-5-5` with low effort by default; `AI_MODEL=claude-haiku-5-5` is cheaper and faster.
 - **Configuration** (`.env`): `AI_ENABLED=true` and `ANTHROPIC_API_KEY` switch it on (the application refuses to start with the flag and no key); optional `AI_MODEL`, `AI_EFFORT` (`low`, `medium`, `high`), `AI_RATE_PER_MINUTE`, `AI_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS`, `AI_DAILY_REQUESTS`. `AI_PROVIDER=fake` answers from the catalog without calling anyone, for development and tests (refused in production). On the server: put the two values in `/opt/ticket-tracker/.env` and restart the application.
-- **Limitations:** the limits are counted in memory (one replica; a restart resets the day); answers can be wrong, and the panel says so; only English field descriptions exist, though the model answers in the language of the question; the answer quality and the latency against the 10 second limit were not measured against the real API. Details: D-025.
+- **Limitations:** the limits are counted in memory (one replica; a restart resets the day); answers can be wrong, and the panel says so; only English field descriptions exist, though the model answers in the language of the question; only `claude-haiku-5-5` was measured against the real API (about 1.2 seconds), not the default `claude-opus-5-5`. Details: D-025.
 
 ## Layout
 See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `src/cli/` the seed, admin and storage commands (compiled into the image as `dist/cli/*.js`), `tests/` unit, integration and e2e suites.
