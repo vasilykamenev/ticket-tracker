@@ -62,5 +62,5 @@ Where to look, what to click, and the likely questions with short answers. Crede
 ## What I would do next
 
 1. Compare the models for the AI field help by quality and cost on a set of questions (only Haiku 5.5 was tried, about 1.2 seconds), and decide the default.
-2. A shared store for the login limits, and protection of `main` once the repository is public.
+2. A shared store for the login limits.
 3. Monitoring and alerting, and a staging environment on which the smoke test with both roles runs after every deployment.

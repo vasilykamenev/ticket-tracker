@@ -69,7 +69,7 @@ The `ci` workflow (pull requests to `develop` and pushes to `develop`) type-chec
 - **Not built:** Self-registration through OAuth (sign-in with Google or GitHub exists, but only for accounts an administrator already created, D-026); a customer portal or customer login; inbound e-mail; antivirus scanning of uploads; comment deletion (disabled by design); a background job for bulk changes of more than 100 tickets (use batches); monitoring and alerting; high availability (one server, a few seconds of unavailability while the container is replaced); a shared store for the login limits (needed once there is more than one replica).
 - **AI field help (optional bonus, requirements section 12):** built, off by default, and tried against the real Claude API (`claude-haiku-5-5`, about 1.2 seconds for a short question); see "AI field help" below.
 - **Customers are a shared directory** among staff, not a multi-tenant model: an agent can see the names and e-mail addresses of known customers but cannot reach out-of-scope tickets through them.
-- **A direct push to `main` is deployed after the secret scan only**, without the tests (they ran on `develop`). Branch protection is planned for when the repository becomes public (`docs/acceptance.md`).
+- **`main` takes pull requests only** (checks `verify`, `docker`, `gitleaks`; no bypass for administrators), because a push to `main` is deployed after the secret scan alone and the tests run on `develop` (D-024).
 
 ## AI field help (optional)
 
