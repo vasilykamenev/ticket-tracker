@@ -12,7 +12,7 @@ import { isAdmin } from '../../policies/ticket-policy.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { ADMIN_MANAGED, ADMIN_WRITE, NO_DELETE, adminOnly, longText, onlyIn, toggle } from './helpers.js';
+import { ADMIN_MANAGED, ADMIN_VIEW, ADMIN_WRITE, NO_DELETE, adminOnly, longText, onlyIn, toggle } from './helpers.js';
 import { dataAction, formAction, mutationAction, recordId } from './record-actions.js';
 
 /**
@@ -73,6 +73,7 @@ export function groupResource(prisma: PrismaClient, groups: GroupService, groupQ
       }),
       actions: {
         ...ADMIN_WRITE,
+        ...ADMIN_VIEW,
         // Everyone in the group may read the member list; only ADMIN sees the controls.
         members: dataAction((context, request) => groupQueries.members(actorFromContext(context), recordId(request))),
         addMember: { ...mutationAction((context, request, p) => groups.addMember(actorFromContext(context), String(p.agentId), recordId(request))), isAccessible: adminOnly },
@@ -112,7 +113,7 @@ export function agentResource(prisma: PrismaClient, agents: AgentService): Resou
         user: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The account cannot be changed.') },
         isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...toggle({ editOnly: true }) },
       }),
-      actions: ADMIN_WRITE,
+      actions: { ...ADMIN_WRITE, ...ADMIN_VIEW },
     },
   };
 }
@@ -143,7 +144,7 @@ export function statusResource(prisma: PrismaClient, statuses: StatusService): R
         name: { isTitle: true },
         isActive: toggle(),
       }),
-      actions: { ...NO_DELETE, new: { isAccessible: () => false }, edit: { isAccessible: adminOnly } },
+      actions: { ...NO_DELETE, ...ADMIN_VIEW, new: { isAccessible: () => false }, edit: { isAccessible: adminOnly } },
     },
   };
 }
