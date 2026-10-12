@@ -22,6 +22,7 @@ import { CustomerService } from './domain/customers/customer-service.js';
 import { DomainError } from './domain/errors.js';
 import { AttachmentService } from './domain/attachments/attachment-service.js';
 import { limitBulkSelection } from './http/bulk-limits.js';
+import { securityHeaders } from './http/security-headers.js';
 import { createAttachmentRouter } from './http/routes/attachments.js';
 import { discardBody } from './http/upload-limits.js';
 import type { ObjectStorage } from './storage/storage.js';
@@ -49,7 +50,7 @@ export interface AppDeps {
   storage: ObjectStorage;
 }
 
-function buildAdmin(prisma: PrismaClient): AdminJS {
+export function buildAdmin(prisma: PrismaClient): AdminJS {
   const tickets = new TicketService(prisma);
   const customers = new CustomerService(prisma);
   const queries = new TicketQueries(prisma);
@@ -97,6 +98,7 @@ export async function buildApp({ env, prisma, sessionPool, storage }: AppDeps): 
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', env.TRUST_PROXY);
+  app.use(securityHeaders({ hsts: env.APP_ENV === 'production' }));
 
   // Health endpoints sit before the session so probes never create sessions.
   app.get('/health/live', (_req, res) => {

@@ -27,7 +27,7 @@ Copy `.env.example` to `.env` (git-ignored) first; `SESSION_SECRET` must be at l
 Local staff accounts, Argon2id hashes, PostgreSQL sessions, CSRF token + Origin check, login rate limits per IP and per account (in-memory, single replica). See `docs/decisions.md` D-006..D-008.
 
 ## Layout
-See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `scripts/` the seed/admin/storage commands, `tests/` unit, integration and e2e suites.
+See section 14 of the requirements. `src/` holds the app, `prisma/` the schema and migrations, `src/cli/` the seed, admin and storage commands (compiled into the image as `dist/cli/*.js`), `tests/` unit, integration and e2e suites.
 
 
 ### Commit messages
@@ -47,6 +47,40 @@ Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/
 | `perf` | Performance improvement |
 | `docs` | Documentation only |
 | `chore` | Maintenance that fits no other type |
+
+## Docker
+
+```
+docker build -t support-ticket-tracker .                                   # pinned Node, prepared AdminJS bundle, runs as `node`
+docker compose up --build                                                  # the image with its own PostgreSQL (migrations run first)
+docker run --rm --env-file prod.env IMAGE npx prisma migrate deploy        # migrations are a separate step (owner role)
+docker run --rm -e ADMIN_PASSWORD=... --env-file prod.env IMAGE node dist/cli/admin-create.js --email admin@example.test
+docker run --rm --env-file prod.env IMAGE node dist/cli/storage-reconcile.js --dry-run
+docker run --rm -e SMOKE_BASE_URL=https://... -e SMOKE_ADMIN_EMAIL=... -e SMOKE_ADMIN_PASSWORD=... [-e SMOKE_AGENT_EMAIL=... -e SMOKE_AGENT_PASSWORD=...] IMAGE node dist/cli/smoke.js
+```
+
+The commands behind the npm scripts are compiled into the image as `dist/cli/*.js`. CI builds the image, runs it against PostgreSQL and smoke-tests it with both roles; `deploy` publishes it to GHCR and `storage-reconcile` runs nightly once enabled. Details: D-018.
+
+## Production on Supabase
+
+One-time setup (details and reasons: D-020). Passwords and keys live only in the host's secret store, in the GitHub environment `production` and in a git-ignored local file (for example `.env.production.local`); never in the repository or in chat.
+
+1. **Supabase dashboard.** Create the private bucket `ticket-attachments`. Under *Settings > API > Exposed schemas* keep only `public` (the schema `support` must not be exposed). Under *Settings > Database* copy the **session pooler** connection string (port 5432) and download the **SSL certificate**.
+2. **Database roles**, once, with the project owner's connection (generate two different passwords of 24+ characters and keep them):
+   ```
+   ADMIN_DATABASE_URL=postgresql://postgres:...@HOST:5432/postgres MIGRATOR_PASSWORD=... RUNTIME_PASSWORD=... npm run db:provision
+   ```
+   It creates `migrator` (owns the schema, migrations only) and `app_runtime` (rows only, no DDL), verifies the result and prints no password.
+3. **Secrets.** In the GitHub environment `production`: `DIRECT_URL` (the migrator's URL), `DATABASE_URL` (the runtime role's URL, with `sslmode=require&connection_limit=5`), `S3_*` (bucket `ticket-attachments`), `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`, optionally `SMOKE_AGENT_*` and `DEPLOY_HOOK_URL`; variable `PRODUCTION_URL`. On the Docker host: `APP_ENV=production`, `PUBLIC_URL` (https), `TRUST_PROXY`, `SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA_CERT`, `S3_*`; never `DIRECT_URL`.
+4. **Deliver.** A push to `main` that passes CI runs `deploy`: image, migrations, hook, storage check, smoke test. The first administrator (once): `ADMIN_PASSWORD=... node dist/cli/admin-create.js --email ...` with the runtime role's `DATABASE_URL`.
+
+## Render
+
+The production service is described in `render.yaml` (D-021). One-time setup:
+
+1. After the first run of `deploy` (a push to `main` that passes CI) the image `ghcr.io/vasilykamenev/ticket-tracker:latest` exists. It is private, so in Render add *Account Settings > Registry Credentials* named `ghcr` (GitHub Container Registry, your GitHub user, a token with the `read:packages` scope).
+2. *New > Blueprint*, pick this repository and branch `main`. Render asks for the secret values: paste the contents of `.env.render` (generated from the local production file) with *Environment > Add from .env*; set `PUBLIC_URL` to the service's `https://...onrender.com` address (or your domain) and redeploy.
+3. Copy the service's *Deploy Hook* URL into the GitHub environment `production` as the secret `DEPLOY_HOOK_URL`, and its address into the variable `PRODUCTION_URL`. From then on every push to `main` that passes CI is deployed, migrated, checked and smoke-tested automatically.
 
 ## Demo data
 

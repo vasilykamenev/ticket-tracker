@@ -4,6 +4,9 @@ import { OUTCOME_MAX, REASON_MAX, RESOLUTION_MIN, STATUS_CODES } from './workflo
 
 const trimmed = (min: number, max: number) => z.string().trim().min(min).max(max);
 
+/** Longest ticket description (requirements section 5.1). */
+export const DESCRIPTION_MAX = 1000;
+
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
 const uuid = z.uuid();
@@ -12,7 +15,7 @@ const uuid = z.uuid();
 export const createTicketSchema = z
   .object({
     subject: trimmed(5, 200),
-    description: trimmed(1, 10000),
+    description: trimmed(1, DESCRIPTION_MAX),
     customerId: uuid,
     groupId: uuid,
     priority: z.enum(PRIORITIES).default('NORMAL'),
@@ -23,7 +26,7 @@ export const createTicketSchema = z
 export const updateTicketSchema = z
   .object({
     subject: trimmed(5, 200).optional(),
-    description: trimmed(1, 10000).optional(),
+    description: trimmed(1, DESCRIPTION_MAX).optional(),
     priority: z.enum(PRIORITIES).optional(),
   })
   .strict()

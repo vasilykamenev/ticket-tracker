@@ -1,4 +1,5 @@
 import type { PropertyOptions } from 'adminjs';
+import { DESCRIPTION_MAX } from '../domain/tickets/schemas.js';
 
 // Single source of labels and help text for AdminJS properties. The optional AI assistant (stage 12)
 // answers questions about fields from this same catalog, so wording lives in one place.
@@ -15,7 +16,7 @@ export const FIELD_CATALOG: Catalog = {
   Ticket: {
     number: { label: 'Number', help: 'Assigned automatically.' },
     subject: { label: 'Subject', help: '5-200 characters.' },
-    description: { label: 'Description', help: 'Up to 10000 characters.' },
+    description: { label: 'Description', help: `Up to ${DESCRIPTION_MAX} characters.` },
     priority: { label: 'Priority', help: 'LOW, NORMAL, HIGH or URGENT.' },
     customer: { label: 'Customer', help: 'Cannot be changed after the ticket is created.' },
     group: { label: 'Group', help: 'The support group that handles the ticket. Change it with Assign.' },
