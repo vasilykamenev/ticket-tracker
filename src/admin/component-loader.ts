@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const NAMES = [
   'ModeField', 'SetPasswordForm', 'ChangeRoleForm', 'GroupMembers',
   'ChangeStatusForm', 'BulkChangeStatusForm', 'AssignForm', 'TicketHistory', 'CustomerTickets', 'Dashboard', 'CommentsInline',
-  'ToggleField', 'ToggleShow', 'TextAreaField', 'StatusBadge', 'PriorityBadge', 'TicketHeader',
+  'ToggleField', 'ToggleShow', 'TextAreaField', 'StatusBadge', 'PriorityBadge', 'TicketHeader', 'MyOpenTickets',
 ] as const;
 
 // Components import each other with ".js" specifiers (NodeNext). Only compiled JavaScript satisfies that, so
@@ -38,4 +38,5 @@ export const Components = {
   StatusBadge: componentLoader.add('StatusBadge', path.join(dir, 'components/StatusBadge')),
   PriorityBadge: componentLoader.add('PriorityBadge', path.join(dir, 'components/PriorityBadge')),
   TicketHeader: componentLoader.add('TicketHeader', path.join(dir, 'components/TicketHeader')),
+  MyOpenTickets: componentLoader.add('MyOpenTickets', path.join(dir, 'components/MyOpenTickets')),
 };
