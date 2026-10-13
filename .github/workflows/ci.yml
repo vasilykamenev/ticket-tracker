@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   verify:
@@ -40,6 +41,14 @@ jobs:
       - run: npx prisma migrate deploy
       - run: npm run typecheck
       - run: npm test
+      # Lists every test file and case, with timings and failures, as its own check on the pull request.
+      - name: Test report
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests
+          path: test-results/junit.xml
+          reporter: java-junit
       - run: npm run build
 
   # Builds the production image and runs it against a real PostgreSQL: the same image that deploy.yml publishes.

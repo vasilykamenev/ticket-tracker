@@ -1,5 +1,7 @@
 # Support Ticket Tracker (com.berney)
 
+[![ci](https://github.com/vasilykamenev/ticket-tracker/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/vasilykamenev/ticket-tracker/actions/workflows/ci.yml)
+
 An internal tool for a support team: customer requests are entered by staff, worked through a fixed workflow by
 agents, and administered by admins. AdminJS + Express + Prisma on Supabase PostgreSQL and Storage, delivered as one
 Docker container behind Caddy (automatic HTTPS) on a VPS.
@@ -15,6 +17,7 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 | [docs/authentication.md](docs/authentication.md) | Roles, the password and OAuth sign-in flows (sequence diagrams), sessions, CSRF, authorization levels |
 | [docs/workflow.md](docs/workflow.md) | Statuses and transitions (state diagram), assignee rules, comments and attachments, who may do what |
 | [docs/operations.md](docs/operations.md) | The delivery pipeline, the server, configuration reference, setup procedures, demo data, troubleshooting |
+| [tests/README.md](tests/README.md) | What every test file checks, and how to run the tests |
 | [docs/decisions.md](docs/decisions.md) | Every design decision with its reasons (D-001 to D-027) |
 | [docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md](docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md) | The requirements |
 | [docs/acceptance.md](docs/acceptance.md), [docs/review.md](docs/review.md) | Progress and evidence; notes for the reviewer |
