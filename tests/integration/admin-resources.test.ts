@@ -140,11 +140,10 @@ describe('ticket filters, sorting and paging', () => {
     expect(ids(await list(b, 'Ticket', `filters.assignedAgent=${agentA.agent.id}&filters.status=__open__`))).toEqual([]);
   });
 
-  it('puts "My open tickets" in the menu for everyone who works in the panel', async () => {
+  it('has no separate "My open tickets" page: the queue is a tab of the ticket list', async () => {
     for (const email of [agentA.user.normalizedEmail, admin.user.normalizedEmail]) {
       const html = (await (await signIn(app, email)).get('/app')).text;
-      expect(html).toMatch(/"name":"MyOpenTickets"/);
-      expect(html).toContain('My open tickets');
+      expect(html).not.toMatch(/"name":"MyOpenTickets"/);
     }
   });
 

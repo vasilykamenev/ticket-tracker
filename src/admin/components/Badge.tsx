@@ -1,4 +1,5 @@
 import React from 'react';
+import { TYPE } from '../tokens.js';
 
 /** A small colored pill used for statuses, priorities and flags, so they read the same in lists and details. */
 export function Pill({ label, color, background }: { label: string; color: string; background?: string }) {
@@ -8,7 +9,7 @@ export function Pill({ label, color, background }: { label: string; color: strin
         display: 'inline-block',
         padding: '2px 10px',
         borderRadius: 999,
-        fontSize: 12,
+        fontSize: TYPE.small,
         fontWeight: 600,
         lineHeight: '18px',
         whiteSpace: 'nowrap',

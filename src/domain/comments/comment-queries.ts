@@ -38,6 +38,16 @@ export interface CommentsPage {
 export class CommentQueries {
   constructor(private readonly prisma: PrismaClient) {}
 
+  /** Every comment of the ticket, oldest first (the activity timeline shows them with the history). */
+  async listAll(actor: Actor, ticketId: string): Promise<{ items: CommentItem[]; canAdd: boolean; statusName: string }> {
+    const first = await this.list(actor, ticketId, 1);
+    const items = [...first.items];
+    for (let page = 2; items.length < first.total && page <= Math.ceil(first.total / first.perPage); page++) {
+      items.push(...(await this.list(actor, ticketId, page)).items);
+    }
+    return { items, canAdd: first.canAdd, statusName: first.statusName };
+  }
+
   /** Oldest first, so a thread reads top to bottom. A ticket outside the scope behaves as if absent. */
   async list(actor: Actor, ticketId: string, page = 1): Promise<CommentsPage> {
     if (!z.uuid().safeParse(ticketId).success) throw new NotFoundError('ticket');

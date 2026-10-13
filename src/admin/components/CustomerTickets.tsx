@@ -4,6 +4,7 @@ import type { BasePropertyProps } from 'adminjs';
 import { PriorityPill } from './PriorityBadge.js';
 import { StatusPill } from './StatusBadge.js';
 import { recordData, ticketUrl, toServerError } from './api.js';
+import { RelativeTime } from './RelativeTime.js';
 
 interface CustomerTicketsPage {
   items: Array<{ id: string; number: number; subject: string; priority: string; status: string; statusCode: string; group: string; updatedAt: string }>;
@@ -85,7 +86,7 @@ const CustomerTickets = ({ record }: BasePropertyProps) => {
               <TableCell>
                 <PriorityPill value={t.priority} />
               </TableCell>
-              <TableCell>{new Date(t.updatedAt).toLocaleString()}</TableCell>
+              <TableCell><RelativeTime value={t.updatedAt} /></TableCell>
             </TableRow>
           ))}
         </TableBody>

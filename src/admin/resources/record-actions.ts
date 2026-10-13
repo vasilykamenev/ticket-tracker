@@ -49,7 +49,9 @@ export const mutationAction = (apply: Apply) => ({
   isVisible: false,
   component: false as const,
   handler: async (request: ActionRequest, _response: unknown, context: ActionContext) => {
-    await apply(context, request, (request.payload ?? {}) as Record<string, unknown>);
-    return withRecord(context, { ok: true });
+    const result = await apply(context, request, (request.payload ?? {}) as Record<string, unknown>);
+    // Only what the action chose to send back, as `{ reply: {...} }`; never a whole database row.
+    const reply = (result as { reply?: unknown } | null | undefined)?.reply;
+    return withRecord(context, { ok: true, ...(reply !== null && typeof reply === 'object' ? reply : {}) });
   },
 });

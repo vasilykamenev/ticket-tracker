@@ -1,4 +1,4 @@
-import type { ActionContext } from 'adminjs';
+import type { ActionContext, LayoutElement } from 'adminjs';
 import { Components } from '../component-loader.js';
 
 type View = 'list' | 'filter' | 'show' | 'edit' | 'new';
@@ -68,3 +68,21 @@ export const toggle = (opts: { editOnly?: boolean } = {}) => ({
 
 /** A long text edited in a tall, scrolling box. */
 export const longText = () => ({ components: { edit: Components.TextAreaField } });
+
+type Layout = LayoutElement[];
+
+/**
+ * The look of the ticket form for any record form: the fields in a wide panel on the left and the status-like
+ * fields (switches, dates) in a narrow panel on the right. Used as an AdminJS action `layout`.
+ */
+export function twoColumn(main: string[], side: string[] = []): Layout {
+  const columns: unknown[] = [[{ variant: 'white', p: 'lg', style: { flex: '1 1 480px', minWidth: 0 } }, main]];
+  if (side.length > 0) columns.push([{ variant: 'white', p: 'lg', style: { flex: '0 0 320px', maxWidth: '100%' } }, side]);
+  return [[{ flex: true, flexDirection: 'row', flexWrap: 'wrap', style: { gap: 24, alignItems: 'flex-start' } }, columns]] as unknown as Layout;
+}
+
+/** Adds the two layouts to the new/edit/show actions of a resource, keeping what the actions already say. */
+export function withLayouts<A extends Record<string, unknown>>(actions: A, layouts: { form: Layout; show: Layout }) {
+  const merged = (key: string, layout: Layout) => ({ ...((actions[key] as object | undefined) ?? {}), layout });
+  return { ...actions, new: merged('new', layouts.form), edit: merged('edit', layouts.form), show: merged('show', layouts.show) };
+}

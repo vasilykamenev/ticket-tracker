@@ -14,7 +14,7 @@ Who can sign in, how a session lives, and what each role can reach. The code is 
 | Comments | edit any comment | edit only own comments |
 | Customers | create and edit | create and read |
 | Users, agents, groups, statuses | manage (menu "Administration") | not shown, API answers 403 |
-| Agent profile | none; has no "My open tickets" | required: an AGENT without an active profile cannot sign in |
+| Agent profile | none; the "My open" tab of the list stays empty | required: an AGENT without an active profile cannot sign in |
 
 Nobody can raise their own role, deactivate their own account, or leave the system without an active administrator: the
 last active ADMIN cannot be demoted or deactivated (checked under a lock, so two simultaneous attempts cannot both succeed).
@@ -163,7 +163,9 @@ seconds; the bucket is private.
 ## Sign-out
 
 `GET /auth/logout` only shows a confirmation page (AdminJS draws logout as a link); `POST /auth/logout` destroys the session
-and clears the cookie. A sign-out therefore cannot be triggered by a link or an image on another site.
+and clears the cookie. A sign-out therefore cannot be triggered by a link or an image on another site. In the panel the
+Sign out link is turned into that POST by `public/csrf-client.js`, so signing out is one click; the confirmation page is
+only the fallback (no script, a failed request, or the address opened directly).
 
 ## What is not covered
 
