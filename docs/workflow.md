@@ -120,5 +120,5 @@ These checks run under row locks, so a concurrent assignment cannot sneak a tick
 | Dashboard | Counts for the person's scope, each linking to the matching filtered list |
 | Tickets | Search, filters (including "any status except Closed" and "unassigned"), sorting, pagination, bulk selection |
 | My open tickets (side menu) | The list filtered to the signed-in agent as assignee, every status except `CLOSED` |
-| Ticket page | Header with number, status and priority; the fields; outcome and dates; history; comments inline with their files |
+| Ticket page | Header with number, status and priority; the fields; outcome and dates; comments inline with their files and the box for a new one; the history last |
 | Edit / Assign / Change status | The forms described above |
