@@ -126,7 +126,7 @@ describe('AI help, enabled', () => {
     expect(res.body).toMatchObject({ available: false, answer: null });
     expect((res.body as { message: string }).message).toMatch(/not available/);
     expect((res.body as { help: { lines: string[] } }).help.lines.join(' ')).toMatch(/LOW, NORMAL, HIGH or URGENT/);
-    expect((await s.get('/admin/api/resources/Ticket/actions/list')).status).toBe(200);
+    expect((await s.get('/app/api/resources/Ticket/actions/list')).status).toBe(200);
     behaviour = 'answer';
   });
 

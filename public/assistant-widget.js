@@ -7,7 +7,7 @@
   'use strict';
 
   var MAX = 1000;
-  var screens = /^\/admin\/resources\/([A-Za-z]+)(?:\/|$)/;
+  var screens = /^\/app\/resources\/([A-Za-z]+)(?:\/|$)/;
   var state = { resource: null, fields: [], lastField: null, open: false, busy: false };
   var els = {};
 

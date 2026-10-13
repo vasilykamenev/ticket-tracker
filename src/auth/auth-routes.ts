@@ -130,7 +130,7 @@ export function createAuthRouter(prisma: PrismaClient, env: Env, options: AuthOp
       req.session.authAt = Date.now();
       req.session.adminUser = toSessionUser(user);
       ensureCsrfToken(req);
-      req.session.save((saveErr) => (saveErr ? next(saveErr) : res.redirect(303, '/admin')));
+      req.session.save((saveErr) => (saveErr ? next(saveErr) : res.redirect(303, '/app')));
     });
   };
 
@@ -146,7 +146,7 @@ export function createAuthRouter(prisma: PrismaClient, env: Env, options: AuthOp
   });
 
   router.get('/login', (req, res) => {
-    if (req.session.userId) return res.redirect(302, '/admin');
+    if (req.session.userId) return res.redirect(302, '/app');
     noStore(res);
     res.send(loginPage(ensureCsrfToken(req), providers));
   });
@@ -183,7 +183,7 @@ export function createAuthRouter(prisma: PrismaClient, env: Env, options: AuthOp
   router.get('/oauth/:provider', perIp, (req, res, next) => {
     const provider = providerOf(String(req.params.provider));
     if (!provider) return res.status(404).type('text').send('Not found');
-    if (req.session.userId) return res.redirect(302, '/admin');
+    if (req.session.userId) return res.redirect(302, '/app');
     const { pending, challenge } = newPending(provider.id);
     req.session.oauth = pending;
     noStore(res);

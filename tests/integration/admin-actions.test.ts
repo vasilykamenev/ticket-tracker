@@ -192,7 +192,7 @@ describe('customer tickets and dashboard', () => {
     await newTicket(lone.id, 'Lone one');
     await newTicket(lone.id, 'Lone two', { assignedAgentId: worker.agent.id });
     const w = await signIn(app, worker.user.normalizedEmail);
-    const res = await w.get('/admin/api/dashboard');
+    const res = await w.get('/app/api/dashboard');
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ total: 2, unassigned: 1, mine: { count: 1, agentId: worker.agent.id } });
     await pool.query(`DELETE FROM support."Session" WHERE sess->>'userId' = $1`, [worker.user.id]);

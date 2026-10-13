@@ -4,7 +4,7 @@ Where to look, what to click, and the likely questions with short answers. Crede
 
 ## Access
 
-- **Live:** https://3130058.vpsnet.cloud (HTTPS, certificate from Let's Encrypt through Caddy). Sign in at `/admin`.
+- **Live:** https://3130058.vpsnet.cloud (HTTPS, certificate from Let's Encrypt through Caddy). Sign in at `/app`.
 - **Demo data** (loaded on the server with `./tools/seed.sh`, D-023): 17 accounts (2 admins `admin1@example.test`, `admin2@example.test`; 15 agents `agent01@example.test` ... `agent15@example.test`), 300 customers, 2000 tickets, 10 000 comments and 200 files, all on the `example.test` domain. The passwords are the two values the owner chose when loading the data and are handed over separately.
 - **Code:** the GitHub repository (branches: `develop` is tested by CI, `main` is what runs in production). Progress and evidence: `docs/acceptance.md`; every non-obvious choice: `docs/decisions.md`. How it works, with diagrams: `docs/architecture.md` (parts and request flow), `docs/database.md` (data model), `docs/authentication.md` (sign-in flows, sessions, roles), `docs/workflow.md` (statuses and rules), `docs/operations.md` (delivery and operation).
 
@@ -39,7 +39,7 @@ Where to look, what to click, and the likely questions with short answers. Crede
 
 ## Likely questions
 
-**Why AdminJS, and where is the authorization if AdminJS can hide things?** AdminJS builds the screens, but hiding a button is not authorization. Every read and write goes through a domain service that checks the loaded user's role and scope, so a hand-made request to `/admin/api` gets the same answer as the UI. The AdminJS resources are guarded wrappers around those services, and the generic edit and delete actions are switched off.
+**Why AdminJS, and where is the authorization if AdminJS can hide things?** AdminJS builds the screens, but hiding a button is not authorization. Every read and write goes through a domain service that checks the loaded user's role and scope, so a hand-made request to `/app/api` gets the same answer as the UI. The AdminJS resources are guarded wrappers around those services, and the generic edit and delete actions are switched off.
 
 **How are lost updates prevented?** Each ticket has a `version`. A form and a bulk request carry the version they started from, and the update is conditional on it; a mismatch is refused and nothing is overwritten. Bulk changes lock the tickets in ascending order inside one transaction, so two batches cannot deadlock.
 

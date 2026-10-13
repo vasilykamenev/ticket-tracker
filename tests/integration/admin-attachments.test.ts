@@ -260,7 +260,7 @@ describe('removing', () => {
     const { ticket, comment } = await target();
     const a = await signIn(app, author.user.normalizedEmail);
     await a.with('post', upload(comment.id)).attach('file', PNG, { filename: 'a.png', contentType: 'image/png' });
-    const url = `/admin/api/resources/Ticket/records/${ticket.id}/listComments`;
+    const url = `/app/api/resources/Ticket/records/${ticket.id}/listComments`;
     expect((await a.get(url)).body.items[0]).toMatchObject({ attachments: [{ name: 'a.png' }], canAttach: true, canDeleteAttachments: true });
 
     const resolved = await tickets.changeStatus(admin.actor, ticket.id, ticket.version, { targetStatus: 'RESOLVED', resolution: RESOLUTION });

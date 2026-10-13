@@ -16,7 +16,7 @@ Design decisions in this document: TypeScript + Node.js + Express + Prisma; one 
 
 ## 2. Application purpose
 
-An internal web application for support staff. A staff member opens `/admin`, signs in, finds a ticket, assigns a group and an agent, changes its status, and adds comments and attachments. Administrators manage staff, groups, customers, and status reference data presentation.
+An internal web application for support staff. A staff member opens `/app`, signs in, finds a ticket, assigns a group and an agent, changes its status, and adds comments and attachments. Administrators manage staff, groups, customers, and status reference data presentation.
 
 The original domain entities are retained: Ticket, Customer, Agent, and Comment. User stores the staff login account; Agent is its support profile. Additional tables support groups, attachments, statuses, auditing, and sessions. They are not separate subsystems.
 
