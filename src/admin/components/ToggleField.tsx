@@ -1,12 +1,13 @@
 import React from 'react';
 import { Box, FormGroup, FormMessage, Label } from '@adminjs/design-system';
 import { useTranslation, type EditPropertyProps, type ShowPropertyProps } from 'adminjs';
+import { ACTIVE_TONE, NEUTRAL_TONE } from '../tokens.js';
 import { Pill } from './Badge.js';
 
 /** A boolean as a switch in forms and a colored pill in lists and details. A missing value counts as on (new records default to active). */
 export const ToggleShow = ({ record, property }: ShowPropertyProps) => {
   const on = record.params?.[property.path] !== false && record.params?.[property.path] !== 'false';
-  return <Pill label={on ? 'Active' : 'Inactive'} color={on ? '#16a34a' : '#6b7280'} />;
+  return <Pill label={on ? 'Active' : 'Inactive'} {...(on ? ACTIVE_TONE : NEUTRAL_TONE)} />;
 };
 
 const ToggleField = ({ record, property, onChange }: EditPropertyProps) => {

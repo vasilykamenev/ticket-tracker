@@ -28,6 +28,12 @@ export async function postRecordAction(resourceId: string, recordId: string, act
   await api.recordAction({ resourceId, recordId, actionName, method: 'post', data });
 }
 
+/** The same, for an action that answers with data (the id of a new comment). */
+export async function postRecordActionForData<T>(resourceId: string, recordId: string, actionName: string, data: Record<string, unknown>): Promise<T> {
+  const response = await api.recordAction({ resourceId, recordId, actionName, method: 'post', data });
+  return response.data as T;
+}
+
 /** Bulk action call: a GET for the form state, or a POST with `data`. The selection travels in the query. */
 export async function bulkAction<T>(resourceId: string, actionName: string, recordIds: string[], data?: Record<string, unknown>): Promise<T> {
   const response = await api.bulkAction({ resourceId, actionName, recordIds, ...(data ? { data } : {}) });

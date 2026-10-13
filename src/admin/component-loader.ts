@@ -7,7 +7,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const NAMES = [
   'ModeField', 'SetPasswordForm', 'ChangeRoleForm', 'GroupMembers',
   'ChangeStatusForm', 'BulkChangeStatusForm', 'AssignForm', 'TicketHistory', 'CustomerTickets', 'Dashboard', 'CommentsInline',
-  'ToggleField', 'ToggleShow', 'TextAreaField', 'StatusBadge', 'PriorityBadge', 'TicketHeader', 'MyOpenTickets', 'StatusEditField',
+  'ToggleField', 'ToggleShow', 'TextAreaField', 'StatusBadge', 'PriorityBadge', 'TicketHeader', 'StatusEditField',
+  'TicketPage', 'TicketList', 'TicketNumberCell', 'RelativeTime', 'BulkAssignForm', 'BulkGroupForm', 'BulkPriorityForm', 'BulkEditForm', 'ActivityFeed', 'PriorityMarker', 'TopBar', 'TicketNewForm', 'ColorField', 'ColorShow', 'Footer',
 ] as const;
 
 // Components import each other with ".js" specifiers (NodeNext). Only compiled JavaScript satisfies that, so
@@ -38,6 +39,21 @@ export const Components = {
   StatusBadge: componentLoader.add('StatusBadge', path.join(dir, 'components/StatusBadge')),
   PriorityBadge: componentLoader.add('PriorityBadge', path.join(dir, 'components/PriorityBadge')),
   TicketHeader: componentLoader.add('TicketHeader', path.join(dir, 'components/TicketHeader')),
-  MyOpenTickets: componentLoader.add('MyOpenTickets', path.join(dir, 'components/MyOpenTickets')),
   StatusEditField: componentLoader.add('StatusEditField', path.join(dir, 'components/StatusEditField')),
+  ColorField: componentLoader.add('ColorField', path.join(dir, 'components/ColorField')),
+  ColorShow: componentLoader.add('ColorShow', path.join(dir, 'components/ColorShow')),
+  TicketNewForm: componentLoader.add('TicketNewForm', path.join(dir, 'components/TicketNewForm')),
+  TicketPage: componentLoader.add('TicketPage', path.join(dir, 'components/TicketPage')),
+  TicketList: componentLoader.add('TicketList', path.join(dir, 'components/TicketList')),
+  TicketNumberCell: componentLoader.add('TicketNumberCell', path.join(dir, 'components/TicketNumberCell')),
+  RelativeTime: componentLoader.add('RelativeTime', path.join(dir, 'components/RelativeTime')),
+  BulkAssignForm: componentLoader.add('BulkAssignForm', path.join(dir, 'components/BulkAssignForm')),
+  BulkGroupForm: componentLoader.add('BulkGroupForm', path.join(dir, 'components/BulkGroupForm')),
+  BulkPriorityForm: componentLoader.add('BulkPriorityForm', path.join(dir, 'components/BulkPriorityForm')),
 };
+
+// Replaces the AdminJS top bar with one that adds the ticket search, "+ New ticket" and the bell around it.
+componentLoader.override('TopBar', path.join(dir, 'components/TopBar'));
+
+// A copyright line with the author's e-mail at the bottom of every page.
+componentLoader.override('Footer', path.join(dir, 'components/Footer'));
