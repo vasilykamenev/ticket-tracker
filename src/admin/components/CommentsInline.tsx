@@ -3,6 +3,7 @@ import { Badge, Box, Button, Icon, Label, Loader, MessageBox, Text, TextArea } f
 import type { BasePropertyProps } from 'adminjs';
 import type { CommentsPage } from '../../domain/comments/comment-queries.js';
 import { checkFile, deleteAttachment, downloadHref, formatBytes, postRecordAction, recordData, toServerError, uploadAttachment } from './api.js';
+import { RelativeTime } from './RelativeTime.js';
 import { ALLOWED_EXTENSIONS, FILE_LIMIT_LABEL, MAX_ATTACHMENTS_PER_COMMENT } from '../../storage/limits.js';
 
 const MAX_LENGTH = 5000;
@@ -125,7 +126,7 @@ const CommentsInline = ({ record }: BasePropertyProps) => {
             <Text fontWeight="bold">
               {c.authorName}{' '}
               <Text as="span" variant="sm">
-                {new Date(c.createdAt).toLocaleString()}
+                <RelativeTime value={c.createdAt} />
               </Text>{' '}
               {c.edited && <Badge size="sm">edited</Badge>}
             </Text>

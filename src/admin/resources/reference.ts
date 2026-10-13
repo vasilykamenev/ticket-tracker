@@ -12,7 +12,7 @@ import { isAdmin } from '../../policies/ticket-policy.js';
 import { Components } from '../component-loader.js';
 import { labelled } from '../field-catalog.js';
 import { GuardedResource, actorFromContext } from '../guarded-resource.js';
-import { ADMIN_MANAGED, ADMIN_VIEW, ADMIN_WRITE, NO_DELETE, adminOnly, longText, onlyIn, toggle } from './helpers.js';
+import { ADMIN_MANAGED, ADMIN_VIEW, ADMIN_WRITE, NO_DELETE, adminOnly, longText, onlyIn, toggle, twoColumn, withLayouts } from './helpers.js';
 import { dataAction, formAction, mutationAction, recordId } from './record-actions.js';
 
 /**
@@ -71,14 +71,17 @@ export function groupResource(prisma: PrismaClient, groups: GroupService, groupQ
         isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...toggle({ editOnly: true }) },
         members: { type: 'mixed', isVisible: onlyIn('show'), components: { show: Components.GroupMembers } },
       }),
-      actions: {
+      actions: withLayouts({
         ...ADMIN_WRITE,
         ...ADMIN_VIEW,
         // Everyone in the group may read the member list; only ADMIN sees the controls.
         members: dataAction((context, request) => groupQueries.members(actorFromContext(context), recordId(request))),
         addMember: { ...mutationAction((context, request, p) => groups.addMember(actorFromContext(context), String(p.agentId), recordId(request))), isAccessible: adminOnly },
         removeMember: { ...mutationAction((context, request, p) => groups.removeMember(actorFromContext(context), String(p.agentId), recordId(request))), isAccessible: adminOnly },
-      },
+      }, {
+        form: twoColumn(['code', 'name', 'description'], ['isActive']),
+        show: twoColumn(['code', 'name', 'description', 'members'], ['isActive']),
+      }),
     },
   };
 }
@@ -113,7 +116,10 @@ export function agentResource(prisma: PrismaClient, agents: AgentService): Resou
         user: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The account cannot be changed.') },
         isActive: { isVisible: onlyIn('list', 'show', 'edit'), ...toggle({ editOnly: true }) },
       }),
-      actions: { ...ADMIN_WRITE, ...ADMIN_VIEW },
+      actions: withLayouts({ ...ADMIN_WRITE, ...ADMIN_VIEW }, {
+        form: twoColumn(['displayName', 'user'], ['isActive']),
+        show: twoColumn(['displayName', 'user'], ['isActive']),
+      }),
     },
   };
 }
@@ -142,9 +148,14 @@ export function statusResource(prisma: PrismaClient, statuses: StatusService): R
         id: { isVisible: false },
         code: { isVisible: onlyIn('list', 'show', 'edit'), ...readonlyOnEdit('The code is fixed by the workflow.') },
         name: { isTitle: true },
+        // Chosen from the palette; the server accepts #rrggbb only.
+        color: { components: { edit: Components.ColorField, list: Components.ColorShow, show: Components.ColorShow } },
         isActive: toggle(),
       }),
-      actions: { ...NO_DELETE, ...ADMIN_VIEW, new: { isAccessible: () => false }, edit: { isAccessible: adminOnly } },
+      actions: withLayouts({ ...NO_DELETE, ...ADMIN_VIEW, new: { isAccessible: () => false }, edit: { isAccessible: adminOnly } }, {
+        form: twoColumn(['code', 'name', 'color', 'sortOrder'], ['isActive']),
+        show: twoColumn(['code', 'name', 'color', 'sortOrder'], ['isActive']),
+      }),
     },
   };
 }
@@ -210,7 +221,7 @@ export function userResource(prisma: PrismaClient, users: UserService): Resource
         passwordHash: { isVisible: false },
         sessionVersion: { isVisible: false },
       }),
-      actions: {
+      actions: withLayouts({
         ...ADMIN_MANAGED,
         changeRole: {
           ...formAction(Components.ChangeRoleForm, (context, request, p) => users.changeRole(actorFromContext(context), recordId(request), p.role)),
@@ -222,7 +233,10 @@ export function userResource(prisma: PrismaClient, users: UserService): Resource
           icon: 'Lock',
           isAccessible: adminOnly,
         },
-      },
+      }, {
+        form: twoColumn(['displayName', 'normalizedEmail', 'role', 'password'], ['isActive']),
+        show: twoColumn(['displayName', 'normalizedEmail', 'role'], ['isActive', 'createdAt', 'updatedAt']),
+      }),
     },
   };
 }

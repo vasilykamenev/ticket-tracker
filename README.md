@@ -1,5 +1,7 @@
 # Support Ticket Tracker (com.berney)
 
+[![ci](https://github.com/vasilykamenev/ticket-tracker/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/vasilykamenev/ticket-tracker/actions/workflows/ci.yml)
+
 An internal tool for a support team: customer requests are entered by staff, worked through a fixed workflow by
 agents, and administered by admins. AdminJS + Express + Prisma on Supabase PostgreSQL and Storage, delivered as one
 Docker container behind Caddy (automatic HTTPS) on a VPS.
@@ -13,9 +15,11 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 | [docs/architecture.md](docs/architecture.md) | The parts, the request pipeline, where each rule lives, the source layout (with diagrams) |
 | [docs/database.md](docs/database.md) | The data model (ER diagram), integrity, concurrency, attachment states, database roles, migrations |
 | [docs/authentication.md](docs/authentication.md) | Roles, the password and OAuth sign-in flows (sequence diagrams), sessions, CSRF, authorization levels |
+| [docs/interface.md](docs/interface.md) | The screens, the design rules, where each screen lives in the code, what was left out on purpose |
 | [docs/workflow.md](docs/workflow.md) | Statuses and transitions (state diagram), assignee rules, comments and attachments, who may do what |
 | [docs/operations.md](docs/operations.md) | The delivery pipeline, the server, configuration reference, setup procedures, demo data, troubleshooting |
-| [docs/decisions.md](docs/decisions.md) | Every design decision with its reasons (D-001 to D-027) |
+| [tests/README.md](tests/README.md) | What every test file checks, and how to run the tests |
+| [docs/decisions.md](docs/decisions.md) | Every design decision with its reasons (D-001 to D-028) |
 | [docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md](docs/Support_Ticket_Tracker_Requirements_EN_v1.1.md) | The requirements |
 | [docs/acceptance.md](docs/acceptance.md), [docs/review.md](docs/review.md) | Progress and evidence; notes for the reviewer |
 
@@ -23,10 +27,11 @@ Docker container behind Caddy (automatic HTTPS) on a VPS.
 
 - **Tickets** with a subject, description (up to 1000 characters), priority, customer, group, assignee, status, resolution or unresolved reason, and a full history. Lists have search, filters, sorting and pagination (checked with 2000 tickets).
 - **A fixed workflow** of six system statuses (NEW, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, UNRESOLVED, CLOSED) with an explicit transition matrix, required reasons and ADMIN-only steps (see [docs/workflow.md](docs/workflow.md)). The status is changed with the Change status action or with the Status field of the edit form, which saves it together with the other edits. Every change is one transaction: the ticket, its version and its history entry.
-- **My open tickets** in the side menu: the ticket list filtered to the signed-in agent as the assignee and every status except CLOSED (the status filter accepts `__open__` for that). AdminJS can only put a page in the menu, so the entry is a small page that sends the person on to the filtered list. Administrators have no agent profile, so they get a short explanation and use the Tickets list.
-- **Inline comments** on the ticket page (create, edit by the author or an admin, never on CLOSED or UNRESOLVED tickets) and **attachments** (PNG, JPEG, PDF, UTF-8 text; 10 MiB; up to 5 per comment) in a private Supabase bucket.
-- **Bulk status change** for up to 100 selected tickets, all-or-nothing, naming every refused ticket.
-- **Customers, users, agents, groups, memberships and statuses** are administered in the same panel; the dashboard shows live counts.
+- **Ticket queues** above the list: Open (the default view: every status except CLOSED), My open (the signed-in agent as the assignee), Unassigned, Waiting for customer and All, each with a count and a shareable address. The status filter accepts `__open__` for "every status except CLOSED".
+- **A ticket page** in two columns: the description and one **activity feed** of comments and history on the left; the properties on the right, where status, priority, assignee and group are dropdowns that save when changed. Comments (create, edit by the author or an admin, never on CLOSED or UNRESOLVED tickets) carry **attachments** (PNG, JPEG, PDF, UTF-8 text; 10 MiB; up to 5 per reply) in a private Supabase bucket, and the reply editor can send a reply and set the status in one step.
+- **Bulk actions** for up to 100 selected tickets: change status, assign, change group, change priority; all-or-nothing, naming every refused ticket, one history entry per ticket.
+- **Customers, users, agents, groups, memberships and statuses** are administered in the same panel, in forms with the same two-column look as the ticket form. The **dashboard** opens with the agent's own queue, every counter links to the matching list, and open tickets are shown by group and by agent with bars in the status colours.
+- **Search and creation:** a ticket search in the top bar (`/` or Ctrl+K), a **+ New ticket** button, and a new-ticket form that suggests the customer's usual group and lets a new customer be added in place.
 - **Roles:** ADMIN sees and manages everything; AGENT sees and works only the tickets of their groups. The scope is applied in the services, so lists, counts, search, history and downloads all obey it, and an out-of-scope id answers 404.
 - **Optimistic locking:** every edit carries the version it started from; a concurrent change is refused instead of overwritten.
 
@@ -44,7 +49,7 @@ The full picture, with the request pipeline and a sequence diagram of a status c
 
 | Part | Choice |
 | --- | --- |
-| Admin UI | AdminJS 7 with the light theme and custom React components (ticket header, inline comments, history, forms) |
+| Admin UI | AdminJS 7 with the light theme and custom React components (ticket page, activity feed, queue tabs, bulk forms, dashboard, top bar); see [docs/interface.md](docs/interface.md) |
 | Server | Node 22, Express 4, TypeScript; one application and one container |
 | Data | Prisma 6 on Supabase PostgreSQL (schema `support`); two database roles: the migrator (owns the schema, used only to migrate) and the runtime role (rows only, no DDL) |
 | Files | Supabase Storage through its S3 API, private bucket, 60-second presigned downloads; nothing is written to the server's disk |

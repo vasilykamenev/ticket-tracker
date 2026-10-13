@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
 
 jobs:
   verify:
@@ -39,7 +41,19 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
+      # Lists every test file and case, with timings and failures, as its own check on the pull request.
+      - name: Test report
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests
+          path: test-results/junit.xml
+          reporter: java-junit
+      # Coverage table in the run summary and as a comment on the pull request.
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        uses: davelosert/vitest-coverage-report-action@v2
       - run: npm run build
 
   # Builds the production image and runs it against a real PostgreSQL: the same image that deploy.yml publishes.

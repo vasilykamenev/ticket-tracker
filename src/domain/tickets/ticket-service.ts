@@ -6,7 +6,9 @@ import { type Actor, type Scope, canAccessGroup, isAdmin, ticketScopeWhere } fro
 import {
   assignTicketSchema,
   assertBatchSize,
+  bulkAssignSchema,
   bulkChangeStatusSchema,
+  bulkPrioritySchema,
   changeStatusSchema,
   createTicketSchema,
   parseInput,
@@ -144,32 +146,94 @@ export class TicketService {
   async assign(actor: Actor, ticketId: string, expectedVersion: number, input: unknown): Promise<TicketWithStatus> {
     const data = parseInput(assignTicketSchema, input);
     const version = parseInput(versionSchema, expectedVersion);
-    return this.prisma.$transaction(async (tx) => {
-      const scope = await loadScope(tx, actor);
-      const ticket = await this.loadForActor(tx, scope, ticketId);
-      this.assertVersion(ticket, version);
-      this.assertNotFrozen(ticket);
+    return this.prisma.$transaction(async (tx) => this.assignInTx(tx, actor, await loadScope(tx, actor), ticketId, version, data));
+  }
 
-      const groupId = data.groupId ?? ticket.groupId;
-      if (!canAccessGroup(scope, groupId)) throw new ForbiddenError('group_not_allowed', 'Group is not available to you');
-      const assignee = data.assignedAgentId === undefined ? ticket.assignedAgentId : data.assignedAgentId;
+  private async assignInTx(tx: Tx, actor: Actor, scope: Scope, ticketId: string, version: number, data: z.infer<typeof assignTicketSchema>): Promise<TicketWithStatus> {
+    const ticket = await this.loadForActor(tx, scope, ticketId);
+    this.assertVersion(ticket, version);
+    this.assertNotFrozen(ticket);
 
-      if (assignee === null) {
-        if (ticket.status.code !== 'NEW') {
-          throw new ValidationError('validation', 'Invalid input', { assignedAgentId: 'only NEW tickets may be unassigned' });
+    const groupId = data.groupId ?? ticket.groupId;
+    if (!canAccessGroup(scope, groupId)) throw new ForbiddenError('group_not_allowed', 'Group is not available to you');
+    const assignee = data.assignedAgentId === undefined ? ticket.assignedAgentId : data.assignedAgentId;
+
+    if (assignee === null) {
+      if (ticket.status.code !== 'NEW') {
+        throw new ValidationError('validation', 'Invalid input', { assignedAgentId: 'only NEW tickets may be unassigned' });
+      }
+      await this.assertGroupActive(tx, groupId);
+    } else {
+      await this.assertAssignable(tx, assignee, groupId);
+    }
+    if (groupId === ticket.groupId && assignee === ticket.assignedAgentId) {
+      throw new ValidationError('no_change', 'Nothing to change');
+    }
+
+    const updated = await this.bump(tx, ticket, version, { group: { connect: { id: groupId } }, assignedAgent: assignee ? { connect: { id: assignee } } : { disconnect: true } });
+    await this.addHistory(tx, ticket.id, actor, 'ASSIGNED', snapshot(ticket), snapshot(updated), null);
+    return updated;
+  }
+
+  /** Assign (or move to another group) up to BULK_MAX_TICKETS tickets, all or nothing, one history entry per ticket. */
+  async bulkAssign(actor: Actor, input: unknown): Promise<{ changed: BulkChanged[] }> {
+    const data = parseInput(bulkAssignSchema, this.checkedBatch(input));
+    const { items, ...change } = data;
+    return this.bulkEach(actor, items, (tx, scope, id, version) => this.assignInTx(tx, actor, scope, id, version, change));
+  }
+
+  /** Change the priority of up to BULK_MAX_TICKETS tickets, all or nothing, one history entry per ticket. */
+  async bulkSetPriority(actor: Actor, input: unknown): Promise<{ changed: BulkChanged[] }> {
+    const data = parseInput(bulkPrioritySchema, this.checkedBatch(input));
+    return this.bulkEach(actor, data.items, (tx, scope, id, version) => this.updateInTx(tx, actor, scope, id, version, { priority: data.priority }));
+  }
+
+  /** Duplicates are merged first, then the size is checked: both before the database is touched. */
+  private checkedBatch(input: unknown): unknown {
+    const raw = (input ?? {}) as { items?: unknown };
+    if (Array.isArray(raw.items)) {
+      const ids = raw.items.map((item, at) => (typeof (item as { id?: unknown } | null)?.id === 'string' ? (item as { id: string }).id : `#${at}`));
+      assertBatchSize(new Set(ids).size);
+    }
+    return input;
+  }
+
+  /** The loop of a bulk change: every ticket is tried so all refusals are reported at once; any refusal rolls everything back. */
+  private async bulkEach(
+    actor: Actor,
+    items: Array<{ id: string; version: number }>,
+    apply: (tx: Tx, scope: Scope, id: string, version: number) => Promise<TicketWithStatus>,
+  ): Promise<{ changed: BulkChanged[] }> {
+    const versions = new Map<string, number>();
+    for (const item of items) {
+      const seen = versions.get(item.id);
+      if (seen !== undefined && seen !== item.version) {
+        throw new ValidationError('validation', 'Invalid input', { items: `ticket ${item.id} is listed twice with different versions` });
+      }
+      versions.set(item.id, item.version);
+    }
+    const ids = [...versions.keys()].sort(); // one fixed order, so two overlapping batches cannot deadlock
+    return this.prisma.$transaction(
+      async (tx) => {
+        const scope = await loadScope(tx, actor);
+        const visible = await tx.ticket.findMany({ where: { AND: [{ id: { in: ids } }, ticketScopeWhere(scope)] }, select: { id: true, number: true } });
+        const numbers = new Map(visible.map((t) => [t.id, t.number]));
+        const failures: BulkFailure[] = [];
+        const changed: BulkChanged[] = [];
+        for (const id of ids) {
+          try {
+            const updated = await apply(tx, scope, id, versions.get(id)!);
+            changed.push({ id, number: updated.number, status: updated.status.code });
+          } catch (err) {
+            if (!(err instanceof DomainError)) throw err;
+            failures.push({ ticketId: id, number: numbers.get(id) ?? null, code: err.code, message: err.message });
+          }
         }
-        await this.assertGroupActive(tx, groupId);
-      } else {
-        await this.assertAssignable(tx, assignee, groupId);
-      }
-      if (groupId === ticket.groupId && assignee === ticket.assignedAgentId) {
-        throw new ValidationError('no_change', 'Nothing to change');
-      }
-
-      const updated = await this.bump(tx, ticket, version, { group: { connect: { id: groupId } }, assignedAgent: assignee ? { connect: { id: assignee } } : { disconnect: true } });
-      await this.addHistory(tx, ticket.id, actor, 'ASSIGNED', snapshot(ticket), snapshot(updated), null);
-      return updated;
-    });
+        if (failures.length > 0) throw new BulkRejectedError(failures);
+        return { changed };
+      },
+      { timeout: BULK_TRANSACTION_TIMEOUT_MS, maxWait: BULK_TRANSACTION_MAX_WAIT_MS },
+    );
   }
 
   async changeStatus(actor: Actor, ticketId: string, expectedVersion: number, input: unknown): Promise<TicketWithStatus> {

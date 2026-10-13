@@ -1,0 +1,81 @@
+/* Look and feel on top of the AdminJS theme. Colors of statuses and priorities live in src/admin/tokens.ts. */
+
+/* Field labels are never smaller than 12 px. */
+label,
+[data-css] label {
+  font-size: max(12px, 1em);
+}
+
+/* Logo in the sidebar: 132 px high, three times the first 44 px. AdminJS sets its own max-width, so the size is forced. */
+[data-css='sidebar-logo'] img {
+  height: 132px !important;
+  width: auto !important;
+  max-width: 100% !important;
+  object-fit: contain;
+}
+
+/* The floating help button (44 px, 20 px from the corner) must never cover the last row or the form buttons:
+   the scrolling content area keeps that much room below its last element. */
+[data-css='app-content'] {
+  padding-bottom: 84px;
+}
+
+/* Compact ticket list: rows about 36 px high, so about 18 tickets fit on a laptop screen. */
+/* Only the body rows are compacted; the header row keeps the height AdminJS gives it. */
+[data-css$='-list-table-wrapper'] table tbody td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+[data-css$='-list-table-wrapper'] table tbody tr {
+  height: 36px;
+}
+
+/* Keyboard focus is always visible. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role='tab']:focus-visible {
+  outline: 2px solid #3040d6;
+  outline-offset: 2px;
+}
+
+/* Pagination under the lists: one rounded bar, a clear current page, roomy targets. */
+.adminjs_Pagination {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 4px !important;
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.adminjs_Pagination > :first-child,
+.adminjs_Pagination > :last-child {
+  border: 0 !important;
+}
+.adminjs_PaginationLink {
+  min-width: 36px !important;
+  height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 500;
+  color: #334155 !important;
+  background: transparent;
+}
+.adminjs_PaginationLink:hover {
+  background: #eef2ff !important;
+  color: #1e293b !important;
+}
+.adminjs_PaginationLink.current {
+  background: #3040d6 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.adminjs_PaginationLink svg {
+  width: 16px;
+  height: 16px;
+}

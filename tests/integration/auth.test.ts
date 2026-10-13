@@ -138,6 +138,8 @@ describe('login', () => {
   it('serves a form with a CSRF token and a hardened session cookie', async () => {
     const res = await request(app).get('/auth/login').expect(200);
     expect(csrfFrom(res.text)).not.toBe('');
+    // The copyright line: the author's name opens a new e-mail to them.
+    expect(res.text).toMatch(/<footer>© \d{4}[^<]*<a href="mailto:[^"]+"[^>]*>Vasily Kamenev<\/a><\/footer>/);
     const cookie = String(res.headers['set-cookie']);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Lax/i);
@@ -239,6 +241,13 @@ describe('logout', () => {
       .type('form')
       .send({ _csrf: csrfFrom(confirm.text) })
       .expect(303);
+    await agent.get(customersList).expect(401);
+  });
+
+  it('signs out with one click: the panel posts with the CSRF header, no confirmation page needed', async () => {
+    const { agent } = await login(app, 'admin');
+    const { token } = (await agent.get('/auth/csrf').expect(200)).body as { token: string };
+    await agent.post('/auth/logout').set('Origin', ORIGIN).set('X-CSRF-Token', token).expect(303);
     await agent.get(customersList).expect(401);
   });
 });

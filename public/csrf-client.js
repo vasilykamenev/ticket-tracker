@@ -69,4 +69,32 @@
       },
     );
   };
+
+  // Signing out is one click: AdminJS draws it as a link (GET), which must not change anything on the server, so the
+  // click is turned into a POST with the token. Without this script (or if the request fails) the link still works
+  // and shows the "Sign out?" page.
+  document.addEventListener(
+    'click',
+    function (event) {
+      var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      var url;
+      try {
+        url = new URL(link.getAttribute('href'), window.location.href);
+      } catch (e) {
+        return;
+      }
+      if (url.origin !== window.location.origin || url.pathname !== '/auth/logout') return;
+      event.preventDefault();
+      window.fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).then(
+        function () {
+          window.location.assign('/auth/login');
+        },
+        function () {
+          window.location.assign('/auth/logout');
+        },
+      );
+    },
+    true,
+  );
 })();

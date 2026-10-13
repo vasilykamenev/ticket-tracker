@@ -3,6 +3,7 @@ import { Box, Button, Label, Loader, MessageBox, Table, TableBody, TableCell, Ta
 import type { BasePropertyProps } from 'adminjs';
 import type { HistoryItem, Page } from '../../domain/tickets/ticket-queries.js';
 import { recordData, toServerError } from './api.js';
+import { RelativeTime } from './RelativeTime.js';
 
 const KIND_LABELS: Record<string, string> = {
   CREATED: 'Created',
@@ -44,7 +45,7 @@ const TicketHistory = ({ record }: BasePropertyProps) => {
         <TableBody>
           {data.items.map((item) => (
             <TableRow key={item.id}>
-              <TableCell>{new Date(item.createdAt).toLocaleString()}</TableCell>
+              <TableCell><RelativeTime value={item.createdAt} /></TableCell>
               <TableCell>{item.actor}</TableCell>
               <TableCell>
                 <Text fontWeight="bold">{KIND_LABELS[item.kind] ?? item.kind}</Text>

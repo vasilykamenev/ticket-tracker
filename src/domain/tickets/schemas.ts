@@ -75,11 +75,27 @@ export const bulkChangeStatusSchema = z
   })
   .strict();
 
+const bulkItems = z.array(z.object({ id: uuid, version: z.number().int().positive() }).strict()).min(1);
+
+/** Group and/or assignee for many tickets; the rules of a single assignment apply to each of them. */
+export const bulkAssignSchema = z
+  .object({
+    items: bulkItems,
+    groupId: uuid.optional(),
+    assignedAgentId: uuid.nullable().optional(),
+  })
+  .strict()
+  .refine((v) => v.groupId !== undefined || v.assignedAgentId !== undefined, { message: 'nothing to assign' });
+
+export const bulkPrioritySchema = z.object({ items: bulkItems, priority: z.enum(PRIORITIES) }).strict();
+
 export const versionSchema = z.number().int().positive();
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
 export type AssignTicketInput = z.infer<typeof assignTicketSchema>;
+export type BulkAssignInput = z.infer<typeof bulkAssignSchema>;
+export type BulkPriorityInput = z.infer<typeof bulkPrioritySchema>;
 export type BulkChangeStatusInput = z.infer<typeof bulkChangeStatusSchema>;
 export type ChangeStatusInput = z.infer<typeof changeStatusSchema>;
 

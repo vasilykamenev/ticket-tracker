@@ -77,12 +77,10 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
     branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
     // The help widget (AI_ENABLED=true) comes after the CSRF script, whose patched fetch it uses.
-    assets: { scripts: ['/auth/csrf-client.js', ...(options.assistant ? ['/auth/assistant-widget.js'] : [])] },
+    assets: { styles: ['/auth/theme.css'], scripts: ['/auth/csrf-client.js', ...(options.assistant ? ['/auth/assistant-widget.js'] : [])] },
     // The light theme is the default look (as on the AdminJS demo); viewers can switch with the moon icon.
     defaultTheme: light.id,
     availableThemes: [light, dark, noSidebar],
-    // Extra menu entries (AdminJS lists pages under the resources).
-    pages: { MyOpenTickets: { component: Components.MyOpenTickets, icon: 'UserCheck' } },
     settings: { defaultPerPage: 25 },
     // Saved-filter shortcuts with live counts; the handler applies the viewer's scope.
     dashboard: {
@@ -91,7 +89,13 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
     },
     locale: {
       language: 'en',
-      translations: { en: { ...catalogTranslations(), pages: { MyOpenTickets: 'My open tickets' } } },
+      translations: {
+        en: {
+          ...catalogTranslations(),
+          // Plural names in the menu, the breadcrumbs and the page titles.
+          labels: { Ticket: 'Tickets', Customer: 'Customers', SupportGroup: 'Groups', Agent: 'Agents', TicketStatus: 'Statuses', User: 'Users' },
+        },
+      },
     },
     // Every model referenced by Ticket must be registered or list/show fail ("no resources with given id").
     // Registered does not mean writable: see GuardedResource (scope on reads, writes only via services).
@@ -138,6 +142,11 @@ export async function buildApp({ env, prisma, sessionPool, storage, oauthFetch, 
   // Public on purpose (the login page may show it) and before the session so it never creates one.
   app.get('/auth/logo.png', (_req, res) => {
     res.sendFile(path.join(publicDir, 'logo.png'), { maxAge: '1d' });
+  });
+  // Typography, logo size and room for the floating help button (see the file).
+  app.get('/auth/theme.css', (_req, res) => {
+    // Revalidated on every load (cheap, it carries an ETag), so a changed look shows up at once.
+    res.type('text/css').sendFile(path.join(publicDir, 'theme.css'), { maxAge: 0, headers: { 'Cache-Control': 'no-cache' } });
   });
   // The outline picture on the welcome panel of the sign-in page (440 px wide, shown at 220 px).
   app.get('/auth/login-art.png', (_req, res) => {
