@@ -107,11 +107,11 @@ export function ticketResource(
       listProperties: ['number', 'subject', 'customer', 'group', 'assignedAgent', 'status', 'priority', 'updatedAt'],
       filterProperties: ['number', 'subject', 'status', 'group', 'assignedAgent', 'priority', 'customer', 'createdAt', 'updatedAt'],
       // The edit form's order (subject, customer, group, assignee, description) under the header line, where the number
-      // carries the status and the priority (TicketHeader). What the form does not have follows, and the comments
-      // (their list and the box for a new one) come last, as they do in the form before Save.
+      // carries the status and the priority (TicketHeader). What the form does not have follows, then the comments
+      // (their list and the box for a new one), and the history comes last, after the Add comment button.
       showProperties: [
         'number', 'subject', 'customer', 'group', 'assignedAgent', 'description',
-        'age', 'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'history', 'comments',
+        'age', 'resolution', 'unresolvedReason', 'resolvedAt', 'unresolvedAt', 'closedAt', 'createdBy', 'createdAt', 'updatedAt', 'version', 'comments', 'history',
       ],
       properties: labelled('Ticket', {
         id: { isVisible: false },
