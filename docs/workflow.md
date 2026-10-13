@@ -117,8 +117,7 @@ These checks run under row locks, so a concurrent assignment cannot sneak a tick
 
 | Screen | What it shows |
 | --- | --- |
-| Dashboard | Counts for the person's scope, each linking to the matching filtered list |
-| Tickets | Search, filters (including "any status except Closed" and "unassigned"), sorting, pagination, bulk selection |
-| My open tickets (side menu) | The list filtered to the signed-in agent as assignee, every status except `CLOSED` |
-| Ticket page | Header with number, status and priority; the fields; outcome and dates; comments inline with their files and the box for a new one; the history last |
-| Edit / Assign / Change status | The forms described above |
+| Dashboard | The agent's own queue; counts for the person's scope, each linking to the matching filtered list; open tickets by group and by agent split by status |
+| Tickets | Queue tabs (Open by default, My open, Unassigned, Waiting for customer, All), search, filters (including "any status except Closed" and "unassigned"), sorting, pagination, bulk selection (status, assignee, group, priority) |
+| Ticket page | Heading with the number and subject; the description and the outcome; one activity feed of comments (with their files) and history; the reply editor; the properties as dropdowns that save when changed |
+| Edit / Assign / Change status | The forms described above; the ticket page offers the simple changes without leaving it |

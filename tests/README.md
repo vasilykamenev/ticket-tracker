@@ -38,6 +38,8 @@ written to `test-results/junit.xml`.
 | `storage.test.ts` | Content-Disposition safety, in-memory storage, S3 storage behaviour |
 | `session-pool-config.test.ts` | Database URL handling for the session pool, CA verification |
 | `seed-dataset.test.ts` | The demo dataset: volumes, example.test addresses, consistency, reproducibility |
+| `tokens.test.ts` | Design tokens: AA contrast of status and priority colors, one color per status, label size |
+| `format.test.ts` | Date helper: relative time, day format, initials |
 | `seed-scale.test.ts` | Dataset size option (2000 tickets), supported range |
 | `assistant-context.test.ts` | AI help: field and status context, screens by role, nothing invented |
 | `assistant-limits.test.ts` | AI help: per-minute and daily limits, per user |
@@ -53,6 +55,8 @@ written to `test-results/junit.xml`.
 | `bulk-status.test.ts` | Bulk status change service: all or nothing, history per ticket, 100-ticket limit |
 | `comment-service.test.ts` | Adding and editing comments, rules by role and status, one comment belongs to one ticket |
 | `attachment-service.test.ts` | Upload states (PENDING to READY), storage failures, downloads, access rights |
+| `bulk-assign.test.ts` | Bulk assign and priority services, bulk form data, dashboard numbers, suggested group, feed data |
+| `admin-redesign.test.ts` | Ticket page actions over HTTP: set priority, timeline, comment id, new ticket form data, bulk assign and priority, dashboard |
 | `staff-services.test.ts` | Accounts: creation, editing, passwords, roles, ADMIN-only |
 | `group-status-services.test.ts` | Groups, members and statuses: codes, deactivation, deactivated status in the workflow |
 | `admin-resources.test.ts` | Ticket and Customer screens: scope, filters, sorting, paging, writes through services, menu by role |

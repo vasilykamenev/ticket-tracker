@@ -33,7 +33,7 @@ flowchart LR
 | --- | --- |
 | **Caddy** | Terminates HTTPS (certificate from Let's Encrypt, renewed by itself), redirects HTTP to HTTPS, compresses, caps the request body at 12 MB, takes an unhealthy instance out of rotation using `/health/live`. The application has no published port. |
 | **Express app** (`src/app.ts`) | Assembles the middleware in a fixed order (below), mounts the sign-in routes, the internal API and AdminJS, and turns every error into a JSON answer without leaking details. |
-| **AdminJS** (`src/admin`) | The screens. Resources are `GuardedResource` wrappers: reads are scoped to the person's groups, writes go through domain services, the generic delete is switched off. Custom React components draw the ticket header, inline comments, history, and the status, assign and bulk forms. |
+| **AdminJS** (`src/admin`) | The screens. Resources are `GuardedResource` wrappers: reads are scoped to the person's groups, writes go through domain services, the generic delete is switched off. Custom React components draw the ticket page with its activity feed, the queue tabs, the bulk forms, the dashboard and the top bar (see [interface.md](interface.md)).|
 | **Domain** (`src/domain`, `src/policies`) | Services (`TicketService`, `CommentService`, `AttachmentService`, `UserService`, ...) own every business rule and run each operation in one transaction. Policies are pure functions of the actor and the data (`ticket-policy.ts`, `comment-policy.ts`). |
 | **Storage** (`src/storage`) | An `ObjectStorage` interface with an S3 implementation (Supabase) and an in-memory one for development and tests. |
 | **Assistant** (`src/assistant`) | Optional AI field help; off unless `AI_ENABLED=true` (D-025). |
@@ -114,15 +114,16 @@ src/
   app.ts, server.ts          assembly and start-up
   config/env.ts              the whole configuration, validated once at start-up
   auth/                      login, sessions, CSRF, OAuth, password hashing, requireUser
-  admin/                     AdminJS resources, field catalog, React components (components/)
+  admin/                     AdminJS resources, field catalog, design tokens, React components (components/); see interface.md
   domain/                    services and queries: tickets, comments, attachments, customers, groups, users, statuses
   policies/                  pure access rules (scope, comment permissions)
+  author.ts                  the name and mailbox in the page footer
   http/                      security headers, upload and bulk limits, /internal routes
   storage/                   object storage (S3, in-memory), file validation, reconcile
   assistant/                 optional AI field help
   ops/, cli/, seed/          database roles, operator commands, the demo dataset
 prisma/                      schema and migrations
-public/                      the CSRF client script, the AI widget, logo and sign-in picture
+public/                      the CSRF client script (also the one-click sign-out), theme.css, the AI widget, logo and sign-in picture
 deploy/vps/                  compose.yaml, Caddyfile, deploy.sh, bootstrap.sh, operator tools
 tests/                       unit and integration suites
 ```
