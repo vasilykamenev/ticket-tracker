@@ -1,3 +1,4 @@
+import { AUTHOR_EMAIL, AUTHOR_NAME, copyrightYears } from '../author.js';
 import express, { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -42,6 +43,7 @@ button:hover{background:#2431b0}
 .or{display:flex;align-items:center;gap:12px;margin:26px 0 4px;color:#6b7280;font-size:12px}.or:before,.or:after{content:"";flex:1;height:1px;background:#dfe1e6}
 .oauth{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px;height:42px;border:1px solid #c0c0ca;border-radius:4px;color:#212529;text-decoration:none;background:#fff}.oauth:hover{background:#f4f5f7}.oauth svg{width:18px;height:18px}
 .err{margin:0 0 4px;padding:14px 16px;background:#fde8e8;border-left:4px solid #b91c1c;border-radius:4px;color:#7f1d1d}
+footer{position:fixed;left:0;right:0;bottom:10px;text-align:center;font-size:12px;color:#6b7280}footer a{color:inherit}
 @media(max-width:700px){.card{flex-direction:column}.welcome{flex:none;padding:28px}.welcome .art{display:none}}`;
 
 // The number after ? is only a cache buster: raise it when public/login-art.png changes (the file is cached for a day).
@@ -51,7 +53,7 @@ function page(title: string, body: string, side?: string): string {
   const main = side
     ? `<section class="welcome">${side}</section><section class="form">${body}</section>`
     : `<section class="form">${body}</section>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${STYLE}</style></head><body><main class="card"${side ? '' : ' style="width:min(26rem,100%);min-height:0"'}>${main}</main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${STYLE}</style></head><body><main class="card"${side ? '' : ' style="width:min(26rem,100%);min-height:0"'}>${main}</main><footer>© ${copyrightYears()} <a href="mailto:${AUTHOR_EMAIL}" title="Write to ${AUTHOR_EMAIL}">${AUTHOR_NAME}</a></footer></body></html>`;
 }
 
 const BRAND = '<div class="brand">Ticket Tracker</div>';
