@@ -54,7 +54,7 @@ flowchart TD
     P --> CS["CSRF check on unsafe methods<br/>Origin + token"]
     CS --> AU["/auth routes<br/>login, OAuth, logout, csrf token"]
     CS --> IN["/internal<br/>requireUser, then attachments and AI help"]
-    CS --> AD["/admin<br/>requireUser, bulk-selection limit, AdminJS router"]
+    CS --> AD["/app<br/>requireUser, bulk-selection limit, AdminJS router"]
     AU --> X2(["response"])
     IN --> X2
     AD --> X2
@@ -86,7 +86,7 @@ sequenceDiagram
     participant TS as TicketService
     participant DB as PostgreSQL
 
-    UI->>MW: POST /admin/api/resources/Ticket/records/{id}/changeStatus<br/>Origin + X-CSRF-Token, {version, targetStatus, ...}
+    UI->>MW: POST /app/api/resources/Ticket/records/{id}/changeStatus<br/>Origin + X-CSRF-Token, {version, targetStatus, ...}
     MW->>DB: load the session, then the user (role, active, sessionVersion)
     MW->>AJ: request with the signed-in actor
     AJ->>TS: changeStatus(actor, id, version, input)

@@ -70,7 +70,7 @@ async function login(app: express.Express, who: string, password = PASSWORD) {
   return { agent, res };
 }
 
-const customersList = '/admin/api/resources/Customer/actions/list';
+const customersList = '/app/api/resources/Customer/actions/list';
 
 let app: express.Express;
 
@@ -104,7 +104,7 @@ describe('health', () => {
 
 describe('response headers', () => {
   it('sends the baseline security headers on pages and on API refusals, without X-Powered-By', async () => {
-    for (const url of ['/auth/login', '/admin/api/resources/Ticket/actions/list', '/health/live', '/no-such-page']) {
+    for (const url of ['/auth/login', '/app/api/resources/Ticket/actions/list', '/health/live', '/no-such-page']) {
       const res = await request(app).get(url);
       expect(res.headers['x-content-type-options'], url).toBe('nosniff');
       expect(res.headers['x-frame-options'], url).toBe('DENY');
@@ -118,7 +118,7 @@ describe('response headers', () => {
 describe('root address', () => {
   it('sends the bare address to the admin panel without creating a session', async () => {
     const res = await request(app).get('/').redirects(0).expect(302);
-    expect(res.headers.location).toBe('/admin');
+    expect(res.headers.location).toBe('/app');
     expect(res.headers['set-cookie']).toBeUndefined();
   });
 });
@@ -126,7 +126,7 @@ describe('root address', () => {
 describe('admin theme', () => {
   it('serves the light theme as the default look', async () => {
     const { agent } = await login(app, 'admin');
-    const html = (await agent.get('/admin').expect(200)).text;
+    const html = (await agent.get('/app').expect(200)).text;
     expect(html).toMatch(/themes\/light\/theme\.bundle\.js/);
     const asset = /(?:src|href)="([^"]*themes\/light\/[^"?]+)/.exec(html)?.[1];
     expect(asset).toBeTruthy();
@@ -179,7 +179,7 @@ describe('login', () => {
     }
   });
 
-  it('signs in, rotates the session id and redirects to /admin', async () => {
+  it('signs in, rotates the session id and redirects to /app', async () => {
     const agent = request.agent(app);
     const page = await agent.get('/auth/login');
     const before = String(page.headers['set-cookie']);
@@ -189,7 +189,7 @@ describe('login', () => {
       .type('form')
       .send({ _csrf: csrfFrom(page.text), email: email('admin'), password: PASSWORD });
     expect(res.status).toBe(303);
-    expect(res.headers.location).toBe('/admin');
+    expect(res.headers.location).toBe('/app');
     expect(String(res.headers['set-cookie'])).not.toBe(before);
     await agent.get(customersList).expect(200);
   });
@@ -203,13 +203,13 @@ describe('login', () => {
 describe('protected admin', () => {
   it('returns 401 JSON for anonymous API calls and redirects page loads', async () => {
     await request(app).get(customersList).expect(401);
-    const page = await request(app).get('/admin').expect(302);
+    const page = await request(app).get('/app').expect(302);
     expect(page.headers.location).toBe('/auth/login');
   });
 
   it('rejects state-changing admin requests without the CSRF header', async () => {
     const { agent } = await login(app, 'admin');
-    const url = `/admin/api/resources/Customer/records/${randomUUID()}/edit`;
+    const url = `/app/api/resources/Customer/records/${randomUUID()}/edit`;
     await agent.post(url).set('Origin', ORIGIN).send({}).expect(403);
 
     const { token } = (await agent.get('/auth/csrf')).body;

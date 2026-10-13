@@ -142,7 +142,7 @@ describe('ticket filters, sorting and paging', () => {
 
   it('puts "My open tickets" in the menu for everyone who works in the panel', async () => {
     for (const email of [agentA.user.normalizedEmail, admin.user.normalizedEmail]) {
-      const html = (await (await signIn(app, email)).get('/admin')).text;
+      const html = (await (await signIn(app, email)).get('/app')).text;
       expect(html).toMatch(/"name":"MyOpenTickets"/);
       expect(html).toContain('My open tickets');
     }
@@ -339,15 +339,15 @@ describe('reference data', () => {
 
   it('shows the Administration pages in the menu to ADMIN only', async () => {
     const s = await signIn(app, admin.user.normalizedEmail);
-    const forAdmin = menu((await s.get('/admin')).text);
-    for (const id of administration) expect(forAdmin[id], id).toMatch(/^"\/admin\/resources\//);
+    const forAdmin = menu((await s.get('/app')).text);
+    for (const id of administration) expect(forAdmin[id], id).toMatch(/^"\/app\/resources\//);
 
     const a = await signIn(app, agentA.user.normalizedEmail);
-    const forAgent = menu((await a.get('/admin')).text);
-    for (const id of administration) expect(forAgent[id] ?? 'none', id).not.toMatch(/^"\/admin\/resources\//);
+    const forAgent = menu((await a.get('/app')).text);
+    for (const id of administration) expect(forAgent[id] ?? 'none', id).not.toMatch(/^"\/app\/resources\//);
     // The support work itself stays in the menu.
-    expect(forAgent.Ticket).toMatch(/^"\/admin\/resources\//);
-    expect(forAgent.Customer).toMatch(/^"\/admin\/resources\//);
+    expect(forAgent.Ticket).toMatch(/^"\/app\/resources\//);
+    expect(forAgent.Customer).toMatch(/^"\/app\/resources\//);
   });
 
   it('keeps the Administration lists and pages closed to an AGENT, while ADMIN opens them', async () => {

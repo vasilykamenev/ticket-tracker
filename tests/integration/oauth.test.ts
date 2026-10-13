@@ -148,20 +148,20 @@ describe('the callback', () => {
     provider.calls = [];
     const { agent, state } = await start(app, 'google');
     const res = await callback(agent, 'google', `code=abc&state=${state}`).expect(303);
-    expect(res.headers.location).toBe('/admin');
+    expect(res.headers.location).toBe('/app');
     expect(String(res.headers['set-cookie'])).toMatch(/sid=/);
     // The code goes to the token endpoint together with the PKCE verifier and the secret, never through the browser.
     const exchange = provider.calls.find((c) => c.url === 'https://oauth2.googleapis.com/token')!;
     expect(exchange.body).toContain('code_verifier=');
     expect(exchange.body).toContain('client_secret=g-secret');
-    await agent.get('/admin/api/resources/Customer/actions/list').expect(200);
+    await agent.get('/app/api/resources/Customer/actions/list').expect(200);
   });
 
   it('signs in an agent too, and the role is the one stored for the account', async () => {
     provider.googleEmail = email('oa-agent');
     const { agent, state } = await start(app, 'google');
     await callback(agent, 'google', `code=abc&state=${state}`).expect(303);
-    const users = await agent.get('/admin/api/resources/User/actions/list');
+    const users = await agent.get('/app/api/resources/User/actions/list');
     expect(JSON.stringify(users.body)).toContain('ForbiddenError'); // an agent cannot list users: the stored role applies
   });
 
@@ -183,7 +183,7 @@ describe('the callback', () => {
     provider.googleVerified = false;
     const { agent, state } = await start(app, 'google');
     await callback(agent, 'google', `code=abc&state=${state}`).expect(401);
-    await agent.get('/admin/api/resources/Customer/actions/list').expect(401);
+    await agent.get('/app/api/resources/Customer/actions/list').expect(401);
     provider.githubEmails = [{ email: email('oa-admin'), primary: true, verified: false }];
     const gh = await start(app, 'github');
     await callback(gh.agent, 'github', `code=abc&state=${gh.state}`).expect(401);
@@ -246,7 +246,7 @@ describe('the callback', () => {
     await callback(ok.agent, 'google', `code=abc&state=${ok.state}`).expect(303);
     await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
     // The session that was just opened ends on the next request, and a new attempt is refused.
-    await ok.agent.get('/admin/api/resources/Customer/actions/list').expect(401);
+    await ok.agent.get('/app/api/resources/Customer/actions/list').expect(401);
     const again = await start(app, 'google');
     await callback(again.agent, 'google', `code=abc&state=${again.state}`).expect(401);
   });

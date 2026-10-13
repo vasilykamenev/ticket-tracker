@@ -22,7 +22,7 @@ export function canSignIn(user: UserWithAgent): boolean {
 }
 
 function wantsJson(req: Request): boolean {
-  return req.originalUrl.startsWith('/admin/api') || req.originalUrl.startsWith('/internal') || req.get('accept')?.includes('application/json') === true;
+  return req.originalUrl.startsWith('/app/api') || req.originalUrl.startsWith('/internal') || req.get('accept')?.includes('application/json') === true;
 }
 
 function reject(req: Request, res: Response): void {
