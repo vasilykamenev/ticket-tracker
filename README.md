@@ -4,7 +4,7 @@ An internal tool for a support team: customer requests are entered by staff, wor
 agents, and administered by admins. AdminJS + Express + Prisma on Supabase PostgreSQL and Storage, delivered as one
 Docker container behind Caddy (automatic HTTPS) on a VPS.
 
-- **Live:** https://3130058.vpsnet.cloud (sign in at `/admin`). Reviewer accounts are shared separately; the repository holds no passwords.
+- **Live:** https://3130058.vpsnet.cloud (sign in at `/app`). Reviewer accounts are shared separately; the repository holds no passwords.
 
 ## Documentation
 

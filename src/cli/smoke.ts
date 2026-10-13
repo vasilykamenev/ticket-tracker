@@ -77,7 +77,7 @@ class Failure extends Error {}
 const must = (condition: unknown, message: string): void => {
   if (!condition) throw new Failure(message);
 };
-const API = '/admin/api/resources';
+const API = '/app/api/resources';
 /** AdminJS answers a forbidden action with HTTP 200 and a typed base error in the record. */
 const refusal = (reply: Reply): string | undefined => {
   try {
@@ -139,11 +139,11 @@ await check('readiness: /health/ready answers ok (database reachable)', async ()
   must(r.status === 200 && r.json().status === 'ok', `status ${r.status}`);
   must(!/postgres|password|DATABASE_URL/i.test(r.text), 'the answer leaks configuration');
 });
-await check('the bare address and /admin lead to the sign-in page', async () => {
+await check('the bare address and /app lead to the sign-in page', async () => {
   const root = await anonymous.get('/');
-  must(root.status === 302 && root.location === '/admin', `/ gave ${root.status} ${root.location}`);
-  const panel = await anonymous.get('/admin');
-  must(panel.status === 302 && panel.location === '/auth/login', `/admin gave ${panel.status} ${panel.location}`);
+  must(root.status === 302 && root.location === '/app', `/ gave ${root.status} ${root.location}`);
+  const panel = await anonymous.get('/app');
+  must(panel.status === 302 && panel.location === '/auth/login', `/app gave ${panel.status} ${panel.location}`);
 });
 await check('the sign-in page has safe headers and no X-Powered-By', async () => {
   const r = await anonymous.get('/auth/login');
@@ -167,14 +167,14 @@ await check('a wrong password is refused', async () => {
 // ---- ADMIN
 await check('ADMIN signs in and gets a protected session cookie', async () => {
   const r = await admin.login(adminEmail, adminPassword);
-  must(r.status === 303 && r.location === '/admin', `status ${r.status} ${r.location}`);
+  must(r.status === 303 && r.location === '/app', `status ${r.status} ${r.location}`);
   const sid = r.setCookies.find((c) => c.startsWith('sid='));
   if (!sid || !/HttpOnly/i.test(sid)) throw new Failure('the session cookie is missing or not HttpOnly');
   if (new URL(base).protocol === 'https:') must(/Secure/i.test(sid), 'the session cookie is not Secure over HTTPS');
   await admin.loadToken();
 });
 await check('ADMIN gets the dashboard and every list', async () => {
-  const dash = await admin.get('/admin/api/dashboard');
+  const dash = await admin.get('/app/api/dashboard');
   must(dash.status === 200, `dashboard ${dash.status}`);
   for (const resource of ['Ticket', 'Customer', 'SupportGroup', 'Agent', 'TicketStatus', 'User']) {
     const r = await admin.get(`${API}/${resource}/actions/list`);
@@ -182,7 +182,7 @@ await check('ADMIN gets the dashboard and every list', async () => {
   }
 });
 await check('the prepared AdminJS bundle is served', async () => {
-  const r = await admin.get('/admin/frontend/assets/components.bundle.js');
+  const r = await admin.get('/app/frontend/assets/components.bundle.js');
   must(r.status === 200 && /javascript/.test(r.headers.get('content-type') ?? '') && r.text.length > 10_000, `status ${r.status}, ${r.text.length} bytes`);
 });
 await check('a write without the CSRF token is refused', async () => {
@@ -214,7 +214,7 @@ if (write) {
 if (agentLogin) {
   await check('AGENT signs in', async () => {
     const r = await agent.login(agentLogin.email, agentLogin.password);
-    must(r.status === 303 && r.location === '/admin', `status ${r.status} ${r.location}`);
+    must(r.status === 303 && r.location === '/app', `status ${r.status} ${r.location}`);
     await agent.loadToken();
   });
   await check('AGENT sees tickets and customers', async () => {

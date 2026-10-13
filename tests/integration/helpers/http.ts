@@ -10,7 +10,7 @@ import { MemoryStorage } from '../../../src/storage/memory-storage.js';
 import { TEST_PASSWORD } from './fixtures.js';
 
 export const ORIGIN = 'http://localhost:3000';
-export const API = '/admin/api/resources';
+export const API = '/app/api/resources';
 
 export function testEnv(overrides: Record<string, string> = {}) {
   const databaseUrl = process.env.DATABASE_URL;

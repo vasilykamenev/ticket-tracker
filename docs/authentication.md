@@ -31,8 +31,8 @@ sequenceDiagram
     participant S as Server (/auth)
     participant DB as PostgreSQL
 
-    P->>B: open /admin
-    B->>S: GET /admin (no session)
+    P->>B: open /app
+    B->>S: GET /app (no session)
     S-->>B: 302 to /auth/login
     B->>S: GET /auth/login
     S->>DB: create an anonymous session with a CSRF token
@@ -47,7 +47,7 @@ sequenceDiagram
     else accepted
         S->>S: regenerate the session id (against session fixation)
         S->>DB: store userId, sessionVersion, authAt, and a new CSRF token
-        S-->>B: 303 to /admin, new cookie sid
+        S-->>B: 303 to /app, new cookie sid
     end
 ```
 
@@ -96,7 +96,7 @@ sequenceDiagram
         S-->>B: 401, one generic message (nothing is created, nothing is revealed)
     else an account that may sign in
         S->>S: regenerate the session, same as the password flow
-        S-->>B: 303 to /admin
+        S-->>B: 303 to /app
     end
 ```
 
@@ -122,7 +122,7 @@ stateDiagram-v2
     Ended --> [*]: next request is redirected to the sign-in page (an API call gets 401)
 ```
 
-On **every** request to `/admin` or `/internal`, `requireUser` checks, in this order: a session with a user id exists; it is
+On **every** request to `/app` or `/internal`, `requireUser` checks, in this order: a session with a user id exists; it is
 younger than `SESSION_ABSOLUTE_HOURS` (8); the user still exists; its `sessionVersion` equals the one stored at sign-in; and
 the user is still allowed to sign in (active, and an AGENT with an active profile). Any failure destroys the session. The user
 is loaded fresh each time, so role changes, deactivation and password changes take effect on the next request without any

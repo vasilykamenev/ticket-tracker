@@ -72,7 +72,7 @@ export function buildAdmin(prisma: PrismaClient, options: { assistant?: boolean 
   const comments = new CommentService(prisma);
   const commentQueries = new CommentQueries(prisma);
   return new AdminJS({
-    rootPath: '/admin',
+    rootPath: '/app',
     logoutPath: '/auth/logout',
     branding: { companyName: 'Ticket Tracker', logo: '/auth/logo.png', withMadeWithLove: false },
     componentLoader,
@@ -130,7 +130,7 @@ export async function buildApp({ env, prisma, sessionPool, storage, oauthFetch, 
     }
   });
 
-  // The application lives under /admin; the bare address would otherwise be an empty 404 page.
+  // The application lives under /app; the bare address would otherwise be an empty 404 page.
   app.get('/', (_req, res) => {
     res.redirect(302, admin.options.rootPath);
   });
