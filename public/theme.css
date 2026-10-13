@@ -20,6 +20,20 @@ label,
   padding-bottom: 84px;
 }
 
+/* The content area is a column that scrolls. AdminJS gives the page block the height of the window while the table
+   inside is taller, so the copyright line used to land in the middle of the page. The page block takes the height of
+   its content instead, and the footer follows it (and sits at the bottom of a short page). */
+[data-css='app-content'] > section:not([data-css='notice']) {
+  height: auto !important;
+  min-height: 0 !important;
+}
+[data-css='app-content'] > * {
+  flex-shrink: 0;
+}
+[data-css='app-content'] > footer {
+  margin-top: auto;
+}
+
 /* Compact ticket list: rows about 36 px high, so about 18 tickets fit on a laptop screen. */
 /* Only the body rows are compacted; the header row keeps the height AdminJS gives it. */
 [data-css$='-list-table-wrapper'] table tbody td {
